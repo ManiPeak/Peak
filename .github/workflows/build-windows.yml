@@ -1,0 +1,60 @@
+# ساخت خودکار EXE ویندوز — Peak
+# همهٔ کارها داخل scripts/build-exe.ps1 انجام می‌شود
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build EXE (all-in-one script)
+        shell: pwsh
+        run: ./scripts/build-exe.ps1
+
+      - name: Upload EXEs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Peak-Windows-EXE
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Log
+          path: dist-log.txt
+          if-no-files-found: ignore
+
+      - name: Make Latest names
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $s = @(Get-ChildItem dist -Filter *.exe | Where-Object { $_.Name -match "(?i)setup" })
+          $p = @(Get-ChildItem dist -Filter *.exe | Where-Object { $_.Name -match "(?i)portable" })
+          if ($s.Count -gt 0) { Copy-Item $s[0].FullName "dist/Peak-Setup-Latest.exe" -Force }
+          if ($p.Count -gt 0) { Copy-Item $p[0].FullName "dist/Peak-Portable-Latest.exe" -Force }
+
+      - name: Publish to GitHub Release
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
