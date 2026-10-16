@@ -7,7 +7,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
 
 export const dynamic = "force-dynamic";
 

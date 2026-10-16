@@ -62,7 +62,6 @@ raw.exec(`
 `);
 
 // درج تنظیمات پیش‌فرض اگر وجود نداشته باشد
-const now = Date.now();
 const existing = raw
   .prepare("SELECT value FROM settings WHERE key = 'app'")
   .get();

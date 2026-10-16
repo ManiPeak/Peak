@@ -4,8 +4,6 @@
  */
 import type { OfflineContext } from "@/lib/offline-brain";
 import {
-  jalaliDate,
-  jalaliTime,
   toEnglishDigits,
   toPersianDigits
 } from "@/lib/persian";
@@ -25,7 +23,7 @@ function safeCalc(expr: string): number | null {
     .replace(/٪/g, "%");
   if (!/^[\d+\-*/().%**]+$/.test(s) || !/\d/.test(s)) return null;
   try {
-    // eslint-disable-next-line no-new-func
+     
     const v = Function(`"use strict";return (${s})`)() as unknown;
     return typeof v === "number" && Number.isFinite(v) ? v : null;
   } catch {
@@ -216,7 +214,7 @@ export const SKILLS: Skill[] = [
     } },
   { id: 9, re: /(?:ک\.م\.م|کم‌م|lcm)\s*(\d+)\s*(?:و|,)\s*(\d+)/i,
     reply: (m) => {
-      let a = numIn(m), b = numIn(m, 2);
+      const a = numIn(m), b = numIn(m, 2);
       const g = (x: number, y: number): number => (y ? g(y, x % y) : x);
       return `ک.م.م = ${toPersianDigits(String((a * b) / g(a, b)))}`;
     } },
@@ -482,6 +480,30 @@ export const SKILLS: Skill[] = [
 ];
 
 /**
+ * مرز واژه: جلوی تطبیق‌های تصادفی داخلِ واژه‌های بزرگ‌تر را می‌گیرد.
+ * مثال: الگوی «معما» نباید داخلِ واژهٔ «معماری» جور شود (که قبلاً اتفاق می‌افتاد
+ * و به‌جای جواب واقعی، معمای آماده به کاربر نشان داده می‌شد).
+ */
+const LETTER_RE = /[\p{L}\p{N}]/u;
+
+/** آیا جای تطبیق، مرزِ مستقلِ واژه دارد؟ */
+function isWholeWordMatch(text: string, match: RegExpMatchArray): boolean {
+  const index = match.index;
+  if (index === undefined) return true;
+  const raw = match[0] ?? "";
+  if (!raw) return true;
+  const start = index;
+  let end = index + raw.length;
+  // «ی» اضافهٔ اضافه در فارسی («معمای خوب») مرز محسوب نمی‌شود
+  if (text[end] === "ی" && !LETTER_RE.test(text[end + 1] ?? " ")) end += 1;
+  const before = start > 0 ? text[start - 1] : "";
+  const after = end < text.length ? text[end] : "";
+  if (before && LETTER_RE.test(before)) return false;
+  if (after && LETTER_RE.test(after)) return false;
+  return true;
+}
+
+/**
  * پیدا کردن مهارت مناسب — null یعنی به مدل سپرده شود
  * برگرداندن null از داخل reply یعنی الگو جور بود ولی محاسبه نشد → ادامه
  */
@@ -491,14 +513,20 @@ export function skillReply(text: string, ctx: OfflineContext): string | null {
   // نسخهٔ ارقام انگلیسی — تا الگوهای \d با «۱۲۳» فارسی هم جور شوند
   const tEn = toEnglishDigits(t);
   for (const s of SKILLS) {
-    const m = t.match(s.re) ?? tEn.match(s.re);
-    if (m) {
-      try {
-        const out = s.reply(m, ctx);
-        if (out && typeof out === "string") return out;
-      } catch {
-        /* مهارت بعدی */
-      }
+    let matchedText = t;
+    let m = t.match(s.re);
+    if (!m) {
+      matchedText = tEn;
+      m = tEn.match(s.re);
+    }
+    if (!m) continue;
+    // تطبیقِ چسبیده به واژه‌ای بزرگ‌تر نادیده گرفته می‌شود (مثل «معماری» ≠ «معما»)
+    if (!isWholeWordMatch(matchedText, m)) continue;
+    try {
+      const out = s.reply(m, ctx);
+      if (out && typeof out === "string") return out;
+    } catch {
+      /* مهارت بعدی */
     }
   }
   return null;

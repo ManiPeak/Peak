@@ -1,20 +1,45 @@
 /**
- * API لیست مدل‌ها — مدل‌های داخلی رایگان + مدل‌های محلی (Ollama / LM Studio)
- * تا کاربر بدون تایپ دستی، از لیست انتخاب کند
+ * API فهرست مدل‌ها — مدل‌های داخلی + مدل‌های واقعی ارائه‌دهندهٔ انتخاب‌شده
+ *
+ * GET /api/settings/models?provider=ollama|openrouter|builtin|…
+ * برای Ollama از /api/tags بومی می‌خواند (فهرست واقعی مدل‌های نصب‌شده)
+ * و اگر سرویس در دسترس نباشد، reachable:false برمی‌گرداند (نه لیست ساختگی).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { BUILT_IN_MODELS } from "@/lib/builtin-models";
-import { listRemoteModels } from "@/lib/llm";
-import { getSettings } from "@/lib/store";
+import { getAdapter, isProviderId, resolveConfig } from "@/lib/providers";
+import { getSettings, maskApiKey } from "@/lib/store";
+import { describeError, logger } from "@/lib/logger";
 import type { ProviderId } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/settings/models?provider=builtin|ollama|lmstudio */
+/** فهرست پیشنهادی وقتی سرویس در دسترس نیست (فقط پیشنهاد، نه ادعا) */
+const SUGGESTED: Partial<Record<ProviderId, string[]>> = {
+  openrouter: [
+    "openai/gpt-4o-mini",
+    "google/gemini-2.0-flash-exp:free",
+    "deepseek/deepseek-chat",
+    "meta-llama/llama-3.3-70b-instruct"
+  ],
+  openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+  groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+  xai: ["grok-2-mini", "grok-2"],
+  ollama: ["llama3.2:3b", "qwen2.5:7b", "gemma2:2b", "phi3:mini"],
+  lmstudio: ["local-model"],
+  "9router": []
+};
+
 export async function GET(req: NextRequest) {
-  const provider = (req.nextUrl.searchParams.get("provider") ??
-    "builtin") as ProviderId;
+  const raw = req.nextUrl.searchParams.get("provider") ?? "builtin";
+  if (!isProviderId(raw)) {
+    return NextResponse.json(
+      { models: [], reachable: false, error: "شناسهٔ ارائه‌دهنده معتبر نیست." },
+      { status: 400 }
+    );
+  }
+  const provider = raw;
   const settings = getSettings();
 
   if (provider === "builtin") {
@@ -24,50 +49,55 @@ export async function GET(req: NextRequest) {
         label: m.label,
         description: m.description,
         builtin: true
-      }))
+      })),
+      reachable: true
     });
   }
 
-  if (provider === "ollama" || provider === "lmstudio") {
-    const baseUrl =
-      provider === "ollama"
-        ? "http://localhost:11434/v1"
-        : "http://localhost:1234/v1";
-    const ids = await listRemoteModels(baseUrl);
+  const apiKeyParam = req.nextUrl.searchParams.get("apiKey");
+  const apiKey =
+    apiKeyParam && apiKeyParam !== maskApiKey(settings.apiKey)
+      ? apiKeyParam
+      : settings.apiKey;
+  const baseUrlParam = req.nextUrl.searchParams.get("baseUrl");
+
+  const cfg = resolveConfig({
+    provider,
+    baseUrl: baseUrlParam ?? settings.baseUrl,
+    model: settings.model,
+    apiKey
+  });
+  const adapter = getAdapter(provider);
+
+  try {
+    const models = await adapter.listModels(cfg);
+    const free = provider === "openrouter" ? models.filter((m) => m.endsWith(":free")) : [];
     return NextResponse.json({
-      models: ids.map((id) => ({
+      models: models.map((id) => ({
         id,
         label: id,
-        description: "مدل محلی روی کامپیوتر شما",
-        builtin: false
+        description: id.endsWith(":free") ? "مدل رایگان OpenRouter" : "",
+        builtin: false,
+        free: id.endsWith(":free")
       })),
-      reachable: ids.length > 0
+      reachable: models.length > 0,
+      // فقط وقتی سرویس واقعاً در دسترس نبود پیشنهاد می‌دهیم
+      suggested: models.length === 0 ? (SUGGESTED[provider] ?? []) : undefined,
+      configuredModel: cfg.model,
+      configuredModelExists: models.some((m) => m.toLowerCase() === cfg.model.toLowerCase()),
+      freeCount: provider === "openrouter" ? free.length : undefined,
+      source: cfg.sources
+    });
+  } catch (err) {
+    const d = describeError(err);
+    logger.warn("models.list_failed", { provider, baseUrl: cfg.baseUrl, error: d.message });
+    return NextResponse.json({
+      models: [],
+      reachable: false,
+      error: d.message,
+      hint: adapter.help,
+      suggested: SUGGESTED[provider] ?? [],
+      configuredModel: cfg.model
     });
   }
-
-  // سایر ارائه‌دهنده‌ها — لیست مدل‌های رایج
-  const common: Record<string, string[]> = {
-    openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "o4-mini"],
-    openrouter: [
-      "openai/gpt-4o-mini",
-      "anthropic/claude-3.5-sonnet",
-      "google/gemini-2.0-flash",
-      "meta-llama/llama-3.3-70b-instruct"
-    ],
-    groq: [
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant",
-      "mixtral-8x7b-32768"
-    ],
-    xai: ["grok-2", "grok-2-mini"],
-    custom: [settings.model]
-  };
-  return NextResponse.json({
-    models: (common[provider] ?? []).map((id) => ({
-      id,
-      label: id,
-      description: "",
-      builtin: false
-    }))
-  });
 }

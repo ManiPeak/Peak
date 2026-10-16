@@ -22,6 +22,7 @@ const VALID_PROVIDERS: ProviderId[] = [
   "xai",
   "ollama",
   "lmstudio",
+  "9router",
   "custom"
 ];
 
@@ -61,6 +62,17 @@ export async function PUT(req: NextRequest) {
     });
   }
 
+  // اعتبارسنجی آدرس پایه — قبل از هر ذخیره‌سازی
+  if (body.baseUrl !== undefined) {
+    const trimmed = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      return NextResponse.json(
+        { error: "آدرس پایه باید با http:// یا https:// شروع شود." },
+        { status: 400 }
+      );
+    }
+  }
+
   // فیلدهای رشته‌ای ساده
   for (const key of [
     "baseUrl",
@@ -77,8 +89,18 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  if (body.provider && VALID_PROVIDERS.includes(body.provider)) {
-    patch.provider = body.provider;
+  // ارائه‌دهنده: مقدار ناشناخته نباید بی‌صدا نادیده گرفته شود
+  if (body.provider !== undefined) {
+    if (typeof body.provider !== "string" || !VALID_PROVIDERS.includes(body.provider as ProviderId)) {
+      return NextResponse.json(
+        {
+          error: `ارائه‌دهندهٔ «${String(body.provider)}» شناخته نشد.`,
+          valid: VALID_PROVIDERS
+        },
+        { status: 400 }
+      );
+    }
+    patch.provider = body.provider as ProviderId;
   }
   if (body.tone && ["friendly", "formal", "playful"].includes(body.tone)) {
     patch.tone = body.tone;

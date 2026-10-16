@@ -26,15 +26,33 @@ import type {
 } from "@/lib/types";
 
 const PROVIDERS: Array<{ id: ProviderId; label: string; needsKey: boolean }> = [
-  { id: "builtin", label: "🌐 هوش مصنوعی آنلاین رایگان (بدون تأخیر، بدون کلید) + ذهن فعال + مغز آفلاین با ۱۰۰ قابلیت", needsKey: false },
+  { id: "builtin", label: "🌐 سرویس داخلی رایگان (بدون کلید) + مغز آفلاین ۱۰۰ قابلیت", needsKey: false },
+  { id: "ollama", label: "🧠 Ollama (محلی و رایگان)", needsKey: false },
+  { id: "openrouter", label: "🌍 OpenRouter (همهٔ مدل‌ها، کلید لازم)", needsKey: true },
+  { id: "9router", label: "🔀 9Router (پروکسی محلی — اختیاری)", needsKey: false },
   { id: "openai", label: "OpenAI", needsKey: true },
-  { id: "openrouter", label: "OpenRouter", needsKey: true },
   { id: "groq", label: "Groq", needsKey: true },
   { id: "xai", label: "xAI (Grok)", needsKey: true },
-  { id: "ollama", label: "Ollama (محلی)", needsKey: false },
   { id: "lmstudio", label: "LM Studio (محلی)", needsKey: false },
-  { id: "custom", label: "سفارشی (OpenAI-Compatible)", needsKey: true }
+  { id: "custom", label: "سفارشی (OpenAI-Compatible)", needsKey: false }
 ];
+
+/** راهنمای هر ارائه‌دهنده — دقیقاً همان چیزی که آداپتور در دیاگنوستیک نشان می‌دهد */
+const PROVIDER_HELP: Record<string, string> = {
+  ollama:
+    "۱) Ollama را نصب کنید (ollama.com) ۲) در ترمینال `ollama serve` ۳) مدل را نصب کنید: `ollama pull llama3.2:3b` ۴) آدرس پیش‌فرض: http://127.0.0.1:11434 — Peak مدل‌های نصب‌شده را خودش می‌خواند و اگر مدل انتخابی نصب نباشد هشدار می‌دهد.",
+  openrouter:
+    "۱) در https://openrouter.ai/keys کلید بسازید ۲) کلید را همین‌جا وارد کنید یا متغیر محیطی OPENROUTER_API_KEY را ست کنید ۳) مدل را از فهرست بکشید (مدل‌های رایگان با «:free» مشخص‌اند).",
+  "9router":
+    "۱) `npm install -g 9router` ۲) `9router` را اجرا کنید (پورت پیش‌فرض ۲۰۱۲۸) ۳) آدرس پیش‌فرض: http://127.0.0.1:20128/v1 ۴) کلید را از داشبورد 9Router کپی کنید (اگر REQUIRE_API_KEY فعال باشد لازم است) ۵) مدل را از فهرست /v1/models انتخاب کنید.",
+  builtin:
+    "سرویس رایگان آنلاین بدون کلید. اگر در دسترس نباشد، Peak خودکار به مغز آفلاین (ساعت، تاریخ، حافظه، ماینکرفت) برمی‌گردد.",
+  openai: "کلید از https://platform.openai.com/api-keys (متغیر محیطی OPENAI_API_KEY).",
+  groq: "کلید رایگان از https://console.groq.com/keys (متغیر محیطی GROQ_API_KEY).",
+  xai: "کلید از https://console.x.ai (متغیر محیطی XAI_API_KEY).",
+  lmstudio: "در LM Studio بخش Developer → Start Server را بزنید (پورت پیش‌فرض ۱۲۳۴).",
+  custom: "هر سرویسی که مسیر {baseUrl}/chat/completions دارد."
+};
 
 /** لیست مدل‌های داخلی رایگان (از API بارگذاری می‌شود) */
 interface ModelOption {
@@ -42,6 +60,32 @@ interface ModelOption {
   label: string;
   description: string;
   builtin: boolean;
+  free?: boolean;
+}
+
+/** پاسخ مسیر فهرست مدل‌ها */
+interface ModelsResponse {
+  models: ModelOption[];
+  reachable?: boolean;
+  error?: string;
+  hint?: string;
+  suggested?: string[];
+  configuredModelExists?: boolean;
+  freeCount?: number;
+}
+
+interface DiagnosticsResponse {
+  ok: boolean;
+  provider: { id: string; label: string; baseUrl: string; model: string; apiKeyMasked: string };
+  checks: Array<{
+    id: string;
+    label: string;
+    status: "PASS" | "FAIL" | "NOT_TESTED" | "SKIPPED";
+    detail: string;
+    hint?: string;
+    latencyMs?: number;
+  }>;
+  summary: { pass: number; fail: number; notTested: number; skipped: number };
 }
 
 const TONES: Array<{ id: Tone; label: string }> = [
@@ -67,16 +111,21 @@ export default function SettingsPage() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelsState, setModelsState] = useState<ModelsResponse | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsResponse | null>(null);
+  const [runningDiag, setRunningDiag] = useState(false);
 
-  /** بارگذاری لیست مدل‌های ارائه‌دهندهٔ انتخاب‌شده */
+  /** بارگذاری لیست مدل‌های واقعی ارائه‌دهندهٔ انتخاب‌شده */
   const loadModels = useCallback(async (provider: ProviderId) => {
     try {
-      const data = await apiGet<{ models: ModelOption[] }>(
+      const data = await apiGet<ModelsResponse>(
         `/api/settings/models?provider=${provider}`
       );
-      setModelOptions(data.models);
+      setModelOptions(data.models ?? []);
+      setModelsState(data);
     } catch {
       setModelOptions([]);
+      setModelsState(null);
     }
   }, []);
 
@@ -87,7 +136,14 @@ export default function SettingsPage() {
         setApiKey(d.settings.apiKeyMasked);
         void loadModels(d.settings.provider);
       })
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        // قبلاً این خطا بی‌صدا بود و صفحه برای همیشه «در حال بارگذاری» می‌ماند
+        setMessage(
+          `خواندن تنظیمات ناموفق بود: ${
+            err instanceof Error ? err.message : "خطای ناشناخته"
+          } — مطمئن شو بک‌اند روی پورت ۳۷۸۴ اجراست (npm run dev).`
+        );
+      });
 
     // صداها و میکروفون‌ها
     const loadDevices = async () => {
@@ -104,7 +160,7 @@ export default function SettingsPage() {
       }
     };
     void loadDevices();
-  }, []);
+  }, [loadModels]);
 
   const update = useCallback((patch: Partial<PublicSettings>) => {
     setSettings((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -112,17 +168,35 @@ export default function SettingsPage() {
 
   const changeProvider = (id: ProviderId) => {
     const baseUrls: Record<string, string> = {
-      builtin: "https://text.pollinations.ai/",
+      builtin: "https://text.pollinations.ai",
       openai: "https://api.openai.com/v1",
       openrouter: "https://openrouter.ai/api/v1",
       groq: "https://api.groq.com/openai/v1",
       xai: "https://api.x.ai/v1",
-      ollama: "http://localhost:11434/v1",
-      lmstudio: "http://localhost:1234/v1",
+      ollama: "http://127.0.0.1:11434",
+      lmstudio: "http://127.0.0.1:1234/v1",
+      "9router": "http://127.0.0.1:20128/v1",
       custom: ""
     };
+    // با تغییر ارائه‌دهنده، مدل قبلی هم عوض می‌شود (مدل هر ارائه‌دهنده فرق دارد)
     update({ provider: id, baseUrl: baseUrls[id] ?? "" });
+    setTestResult(null);
+    setDiagnostics(null);
     void loadModels(id);
+  };
+
+  /** اجرای تشخیص کامل روی تنظیمات ذخیره‌شده */
+  const runDiagnosticsNow = async () => {
+    setRunningDiag(true);
+    try {
+      const res = await fetch("/api/diagnostics");
+      const data = (await res.json()) as DiagnosticsResponse;
+      setDiagnostics(data);
+    } catch {
+      setDiagnostics(null);
+    } finally {
+      setRunningDiag(false);
+    }
   };
 
   const save = async () => {
@@ -166,7 +240,7 @@ export default function SettingsPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await apiSend<ConnectionTestResult>(
+      const result = await apiSend<ConnectionTestResult & { checks?: DiagnosticsResponse["checks"] }>(
         "/api/settings/test",
         "POST",
         {
@@ -177,6 +251,25 @@ export default function SettingsPage() {
         }
       );
       setTestResult(result);
+      if (result.checks) {
+        setDiagnostics({
+          ok: result.ok,
+          provider: {
+            id: settings?.provider ?? "builtin",
+            label: "",
+            baseUrl: settings?.baseUrl ?? "",
+            model: settings?.model ?? "",
+            apiKeyMasked: ""
+          },
+          checks: result.checks,
+          summary: {
+            pass: result.checks.filter((c) => c.status === "PASS").length,
+            fail: result.checks.filter((c) => c.status === "FAIL").length,
+            notTested: result.checks.filter((c) => c.status === "NOT_TESTED").length,
+            skipped: result.checks.filter((c) => c.status === "SKIPPED").length
+          }
+        });
+      }
     } catch (err) {
       setTestResult({
         ok: false,
@@ -189,8 +282,21 @@ export default function SettingsPage() {
 
   if (!settings) {
     return (
-      <div className="flex h-64 items-center justify-center text-slate-400">
-        در حال بارگذاری تنظیمات...
+      <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
+        {message ? (
+          <>
+            <p className="max-w-md text-center text-sm text-red-300">{message}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="field w-auto cursor-pointer"
+            >
+              تلاش دوباره
+            </button>
+          </>
+        ) : (
+          <p>در حال بارگذاری تنظیمات...</p>
+        )}
       </div>
     );
   }
@@ -224,6 +330,12 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label>راهنمای راه‌اندازی</Label>
+            <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] leading-6 text-slate-300">
+              {PROVIDER_HELP[settings.provider] ?? ""}
+            </p>
           </div>
           <div>
             <Label>Base URL</Label>
@@ -282,6 +394,32 @@ export default function SettingsPage() {
                 placeholder="gpt-4o-mini"
               />
             )}
+            {/* وضعیت واقعی فهرست مدل‌ها — صادقانه، بدون ادعای الکی */}
+            {settings.provider !== "builtin" && modelsState ? (
+              modelsState.reachable ? (
+                <p className="mt-1.5 text-[11px] text-emerald-300/90">
+                  ✅ {modelsState.models.length} مدل واقعی از ارائه‌دهنده خوانده شد
+                  {typeof modelsState.freeCount === "number" &&
+                  modelsState.freeCount > 0
+                    ? ` (${modelsState.freeCount} مدل رایگان)`
+                    : ""}
+                  {modelsState.configuredModelExists === false
+                    ? " — ⚠️ مدل انتخابی در این فهرست نیست."
+                    : ""}
+                </p>
+              ) : (
+                <div className="mt-1.5 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-6 text-amber-100">
+                  <p>⚠️ سرویس در دسترس نیست یا فهرست مدل‌ها خوانده نشد.</p>
+                  {modelsState.error ? <p className="opacity-90">{modelsState.error}</p> : null}
+                  {modelsState.suggested?.length ? (
+                    <p className="mt-1 opacity-90">
+                      شناسه‌های رایج (بررسی‌نشده):{" "}
+                      {modelsState.suggested.slice(0, 5).join(" — ")}
+                    </p>
+                  ) : null}
+                </div>
+              )
+            ) : null}
             {settings.provider === "builtin" ? (
               <p className="mt-1.5 text-[11px] text-emerald-300/80">
                 ✅ این مدل‌ها رایگان‌اند و بدون کلید API کار می‌کنن — همین
@@ -340,6 +478,60 @@ export default function SettingsPage() {
                 {testResult.message}
               </span>
             ) : null}
+          </div>
+
+          {/* تشخیص کامل — PASS/FAIL/NOT TESTED برای هر مرحله */}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center gap-3">
+              <Btn variant="ghost" onClick={() => void runDiagnosticsNow()} disabled={runningDiag}>
+                {runningDiag ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={15} className="animate-spin" /> در حال بررسی کامل...
+                  </span>
+                ) : (
+                  "🔍 تشخیص کامل (تنظیمات ذخیره‌شده)"
+                )}
+              </Btn>
+              {diagnostics ? (
+                <span className="text-[11px] text-slate-400">
+                  {diagnostics.summary.pass} موفق · {diagnostics.summary.fail} ناموفق ·{" "}
+                  {diagnostics.summary.notTested} تست‌نشده
+                </span>
+              ) : null}
+            </div>
+
+            {diagnostics ? (
+              <ul className="mt-3 space-y-2 text-[12px] leading-6">
+                {diagnostics.checks.map((c) => (
+                  <li key={`${c.id}-${c.label}`} className="flex flex-col gap-0.5">
+                    <span
+                      className={
+                        c.status === "PASS"
+                          ? "text-emerald-300"
+                          : c.status === "FAIL"
+                            ? "text-red-300"
+                            : "text-amber-200/90"
+                      }
+                    >
+                      {c.status === "PASS" ? "✅" : c.status === "FAIL" ? "❌" : "➖"}{" "}
+                      <span className="font-medium">{c.label}</span>
+                      {typeof c.latencyMs === "number" ? (
+                        <span className="text-slate-500"> ({c.latencyMs}ms)</span>
+                      ) : null}
+                    </span>
+                    <span className="text-slate-400">{c.detail}</span>
+                    {c.hint ? (
+                      <span className="text-amber-200/80">↳ {c.hint}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-[11px] leading-6 text-slate-500">
+                این دکمه ابتدا تنظیمات را ذخیره می‌کند و بعد همهٔ مراحل را واقعاً تست می‌کند:
+                دسترسی به سرویس، احراز هویت، وجود مدل و یک تولید متن واقعی.
+              </p>
+            )}
           </div>
         </div>
       </Card>
@@ -509,22 +701,28 @@ export default function SettingsPage() {
       </Card>
 
       {/* ذخیره */}
-      <div className="sticky bottom-24 flex items-center gap-3 md:bottom-6">
-        <Btn onClick={() => void save()} disabled={saving}>
-          {saving ? (
-            <span className="flex items-center gap-2">
-              <Loader2 size={15} className="animate-spin" /> در حال ذخیره...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Save size={15} /> ذخیرهٔ تنظیمات
-            </span>
-          )}
-        </Btn>
-        {message ? (
-          <span className="text-sm text-slate-300">{message}</span>
-        ) : null}
-      </div>
+<div className="sticky bottom-24 flex items-center gap-3 md:bottom-6">
+          <Btn
+            onClick={async () => {
+              await save();
+              await runDiagnosticsNow();
+            }}
+            disabled={saving}
+          >
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <Loader2 size={15} className="animate-spin" /> در حال ذخیره...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Save size={15} /> ذخیرهٔ تنظیمات + بررسی
+              </span>
+            )}
+          </Btn>
+          {message ? (
+            <span className="text-sm text-slate-300">{message}</span>
+          ) : null}
+        </div>
 
       {/* چک‌لیست وضعیت */}
       <Card className="mt-6">

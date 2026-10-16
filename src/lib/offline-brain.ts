@@ -4,6 +4,7 @@
  * ساعت، تاریخ، نام، حافظه، راهنما و دستورهای ماینکرفت — بدون هیچ خطا
  */
 import type { AppSettings, MemoryDTO } from "@/lib/types";
+import { configLooksComplete, resolveConfig } from "@/lib/providers";
 import { jalaliDate, jalaliDateTime, jalaliTime, toPersianDigits } from "@/lib/persian";
 import { skillReply, SKILL_COUNT } from "@/lib/offline-skills";
 
@@ -162,10 +163,13 @@ export function offlineReply(text: string, ctx: OfflineContext): string {
 
 /** آیا ارائه‌دهنده آمادهٔ اتصال به LLM هست؟ */
 export function isProviderReady(settings: AppSettings): boolean {
-  // مدل‌های داخلی رایگان همیشه آماده‌اند (بدون کلید)
+  // سرویس داخلی رایگان همیشه آماده است (بدون کلید) — اگر نبود، آفلاین جواب می‌دهد
   if (settings.provider === "builtin") return true;
-  const needsKey = !["ollama", "lmstudio"].includes(settings.provider);
-  if (needsKey && !settings.apiKey.trim()) return false;
-  if (!settings.baseUrl.trim() || !settings.model.trim()) return false;
-  return true;
+  // بررسی روی پیکربندی نهایی (تنظیمات + پیش‌فرض‌ها + متغیرهای محیطی)
+  try {
+    const cfg = resolveConfig(settings);
+    return configLooksComplete(cfg).ok;
+  } catch {
+    return false;
+  }
 }

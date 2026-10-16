@@ -314,6 +314,8 @@ async function apiAction(
       pts.forEach(([px, py, pz], i) => {
         setTimeout(() => {
           const g = new (
+            // require عمدی: مسیریاب اختیاری است و باید همین‌جا و هم‌زمان لود شود
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             require("mineflayer-pathfinder") as typeof import("mineflayer-pathfinder")
           ).goals.GoalNear(px, py, pz, 1.5);
           bot?.pathfinder.setGoal(g);
@@ -492,6 +494,7 @@ async function apiAction(
     case "dig_stairs":
     case "mine_forward": {
       const g = new (
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         require("mineflayer-pathfinder") as typeof import("mineflayer-pathfinder")
       ).goals.GoalBlock(
         Math.floor(bot?.entity.position.x ?? 0),
@@ -538,6 +541,7 @@ async function apiAction(
           maxDistance: 5
         });
         if (!ref) return "🧱 نزدیکم بلوکی نیست که روش بذارم!";
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { Vec3 } = require("vec3") as typeof import("vec3");
         await bot.placeBlock(ref, new Vec3(0, 1, 0));
         return "🧱 بلوک رو گذاشتم!";
@@ -1603,8 +1607,8 @@ const FAST_PATTERNS: FastPattern[] = [
   { re: /(دست[‌ ]?هات\s*رو\s*عوض\s*کن)/i, id: "swap_hands" },
   { re: /(کوله[‌ ]?بار\s*رو\s*تمیز\s*کن|آشغال[‌ ]?ها\s*رو\s*بریز)/i, id: "clean_inventory" },
   { re: /(تاتم\s*رو\s*دستت\s*بگیر)/i, id: "refill_totem" },
-  { re: /(تونل\s*(بزن|بکن))/i, id: "dig_tunnel", args: (m) => ({ n: "5" }) },
-  { re: /(چاه\s*(بزن|بکن))/i, id: "dig_shaft", args: (m) => ({ n: "5" }) },
+  { re: /(تونل\s*(بزن|بکن))/i, id: "dig_tunnel", args: () => ({ n: "5" }) },
+  { re: /(چاه\s*(بزن|بکن))/i, id: "dig_shaft", args: () => ({ n: "5" }) },
   // سرگرمی و حالت‌ها
   { re: /(آواز\s*بخون|بخون\s*برام)/i, id: "sing_chat" },
   { re: /(جوک\s*بگو\s*تو\s*چت)/i, id: "tell_joke_chat" },
