@@ -50,6 +50,7 @@ export type ProviderId =
   | "xai"
   | "ollama"
   | "lmstudio"
+  | "9router"
   | "custom";
 
 /** حالت پاسخ‌دهی پیام */

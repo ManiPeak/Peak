@@ -149,4 +149,75 @@ Next.js 15 (App Router) • TypeScript • Tailwind CSS • Framer Motion • Dr
 
 ---
 
+## 🔌 ارائه‌دهنده‌های هوش مصنوعی
+
+Peak با چند ارائه‌دهنده کار می‌کند؛ از صفحهٔ **تنظیمات** قابل انتخاب است و
+هیچ کلیدی داخل کد یا گیت نیست (همه‌چیز از تنظیمات محلی یا متغیر محیطی).
+
+| ارائه‌دهنده | وضعیت | کلید | یادداشت |
+|---|---|---|---|
+| 🧠 **Ollama** (محلی) | کامل | ❌ لازم نیست | از API بومی `/api/tags` و `/api/chat` استفاده می‌کند و مدل‌های نصب‌شده را خودش می‌خواند |
+| 🌍 **OpenRouter** | کامل | ✅ | مسیر و هدرها مطابق مستند رسمی + بررسی کریدت از `/api/v1/key` |
+| 🔀 **9Router** | اختیاری | گاهی | پروکسی محلی OpenAI-Compatible (پیش‌فرض مستندشده: `http://127.0.0.1:20128/v1`) |
+| 🌐 سرویس داخلی رایگان | کامل | ❌ | پیش‌فرض برنامه؛ در نبود اینترنت، خودکار به مغز آفلاین می‌رود |
+| OpenAI / Groq / xAI / LM Studio / سفارشی | کامل | بسته به سرویس | مسیر OpenAI-Compatible |
+
+### Ollama در ۴ دستور
+```bash
+ollama serve
+ollama pull llama3.2:3b
+ollama list
+npm run diagnose -- --provider ollama
+```
+
+### OpenRouter
+```bash
+# کلید: https://openrouter.ai/keys
+export OPENROUTER_API_KEY="sk-or-v1-..."     # ویندوز: $env:OPENROUTER_API_KEY="..."
+export OPENROUTER_MODEL="openai/gpt-4o-mini" # یا یک مدل رایگان با پسوند :free
+npm run diagnose -- --provider openrouter
+```
+
+### 9Router (اختیاری)
+```bash
+npm install -g 9router
+9router            # داشبورد: http://localhost:20128 · API: http://localhost:20128/v1
+```
+سپس در Peak: ارائه‌دهنده = `9Router`، کلید از داشبورد، مدل از فهرست `/v1/models`.
+
+📄 راهنمای کامل و دقیق: [`docs/PROVIDERS.md`](docs/PROVIDERS.md)
+
+---
+
+## 🔍 تشخیص سلامت (Diagnostics)
+
+```bash
+npm run diagnose                                  # کل وضعیت سیستم
+npm run diagnose -- --provider ollama            # تست یک ارائه‌دهندهٔ خاص
+curl http://127.0.0.1:3784/api/health            # سلامت بک‌اند
+curl http://127.0.0.1:3784/api/diagnostics       # گزارش کامل JSON
+```
+
+هر مرحله با `PASS` / `FAIL` / `NOT_TESTED` / `SKIPPED` مشخص می‌شود —
+یعنی Peak هرگز وانمود نمی‌کند چیزی «کار می‌کند» که واقعاً تست نشده است.
+
+---
+
+## 🧪 تست و بررسی
+
+```bash
+npm install         # نصب وابستگی‌ها
+npm run dev         # اجرای توسعه روی http://localhost:3784
+npm run typecheck   # بررسی نوع‌ها
+npm test            # ۴۲ تست: واحد (Mock) + یکپارچه با سرور ساختگی محلی + هندلر واقعی چت
+npm run test:live   # تست‌های زندهٔ Ollama/OpenRouter (نیازمند اینترنت و کلید)
+npm run build       # بیلد تولیدی
+```
+
+تنظیم اختیاری (فایل `.env` از روی `.env.example` بسازید):
+`OLLAMA_BASE_URL`، `OLLAMA_MODEL`، `OPENROUTER_API_KEY`، `OPENROUTER_MODEL`،
+`NINE_ROUTTER_BASE_URL`، `PEAK_LOG_LEVEL`، `PEAK_LOG_FILE=1`.
+
+---
+
 ساخته‌شده با ❤️ برای اجرا روی کامپیوتر خودت — داده‌هایت مال خودت می‌ماند.

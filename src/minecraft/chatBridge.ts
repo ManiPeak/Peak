@@ -7,6 +7,7 @@
  * ضد اسپم: هر بازیکن هر ۳.۵ ثانیه یک جواب می‌گیرد.
  */
 import { botManager } from "@/minecraft/botManager";
+import { logger } from "@/lib/logger";
 import {
   buildContext,
   extractMcTokens,
@@ -54,7 +55,13 @@ export function installChatBridge(): void {
   if (installed) return;
   installed = true;
   botManager.setChatListener((username, message) => {
-    void handlePlayerChat(username, message).catch(() => undefined);
+    // خطای پردازش پیام بازیکن نباید بی‌صدا بماند (وگرنه ربات خراب به‌نظر می‌رسد)
+    void handlePlayerChat(username, message).catch((err: unknown) => {
+      logger.error("minecraft.chat_bridge_failed", {
+        username,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
   });
 }
 

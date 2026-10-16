@@ -9,7 +9,7 @@ import {
   findMemories,
   listMemories
 } from "@/lib/store";
-import type { MemoryCategory, MemoryDTO, MemorySource } from "@/lib/types";
+import type { MemoryCategory, MemoryDTO } from "@/lib/types";
 import { cleanText, toEnglishDigits } from "@/lib/persian";
 
 /* ------------------------------------------------------------------ */

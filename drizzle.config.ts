@@ -4,7 +4,7 @@
  * توجه: این فایل عمداً از پکیج drizzle-kit ایمپورت نمی‌کند تا بیلد برنامه
  * هرگز به نصب بودن آن وابسته نباشد. drizzle-kit با npx خودش اجرا می‌شود.
  */
-export default {
+const config = {
   schema: "./src/db/schema.ts",
   out: "./drizzle",
   dialect: "sqlite",
@@ -12,3 +12,5 @@ export default {
     url: process.env.DASTIAR_DB_PATH ?? "./data/app_db.sqlite"
   }
 };
+
+export default config;

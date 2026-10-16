@@ -241,6 +241,8 @@ export default function MemoryPage() {
           )
         )}
         <div className="flex-1" />
+        {/* دانلود فایل است، نه مسیریابی داخلی — <Link> اینجا اشتباه می‌شود */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/api/memories/export"
           className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 transition hover:bg-white/10"

@@ -11,13 +11,12 @@ import {
   Plus,
   Search,
   Send,
-  Sparkles,
   Trash2,
   Volume2,
   X
 } from "lucide-react";
 import Link from "next/link";
-import { Btn, Field } from "@/components/ui";
+import { Btn } from "@/components/ui";
 import { PeakLogo } from "@/components/PeakLogo";
 import { EmergencyStop } from "@/components/EmergencyStop";
 import {

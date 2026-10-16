@@ -1,0 +1,29 @@
+# ---- وابستگی‌ها و خروجی ساخت ----
+node_modules/
+.next/
+out/
+dist/
+build/output/
+*.tsbuildinfo
+
+# ---- داده‌های محلی برنامه (دیتابیس = شامل کلید API، مودها، لاگ‌ها) ----
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+peak-log.txt
+peak-server.log
+
+# ---- اسرار هرگز نباید کامیت شود ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- سیستم‌عامل و ویرایشگر ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

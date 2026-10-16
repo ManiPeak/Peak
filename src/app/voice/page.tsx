@@ -4,20 +4,18 @@
  * صفحهٔ مکالمهٔ صوتی — گوی نئونی، امواج صدا، تشخیص گفتار فارسی، Barge-in
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Volume2, VolumeX, Loader2, Send } from "lucide-react";
+import { Mic, MicOff, Volume2, Loader2, Send } from "lucide-react";
 import { Btn, Field, PageTitle, Toggle } from "@/components/ui";
 import {
   apiGet,
-  apiSend,
   createSpeechStream,
   isSpeaking,
   listVoices,
-  speak,
   stopSpeaking
 } from "@/lib/client";
 import { hasPermission } from "@/lib/permissions";
 import { EmergencyStop } from "@/components/EmergencyStop";
-import type { MessageDTO, PublicSettings } from "@/lib/types";
+import type { PublicSettings } from "@/lib/types";
 import { startStt, type SttSession } from "@/lib/stt";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking";
@@ -141,6 +139,20 @@ export default function VoicePage() {
             content: clean
           })
         });
+
+        // پاسخ خطا باید دیده شود — قبلاً بی‌صدا یک پیام خالی نمایش داده می‌شد
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            code?: string;
+          };
+          const message =
+            data.error ?? `خطای سرور (HTTP ${res.status}). ارتباط با بک‌اند برقرار نشد.`;
+          setError(message);
+          setState(shouldListenRef.current ? "listening" : "idle");
+          return;
+        }
+
         const convId = Number(res.headers.get("X-Conversation-Id"));
         if (convId) activeIdRef.current = convId;
 
@@ -176,8 +188,12 @@ export default function VoicePage() {
         } else {
           setState(shouldListenRef.current ? "listening" : "idle");
         }
-      } catch {
-        setError("ارتباط با دستیار برقرار نشد.");
+      } catch (err) {
+        setError(
+          err instanceof Error && err.message
+            ? `ارتباط با دستیار برقرار نشد: ${err.message}`
+            : "ارتباط با دستیار برقرار نشد."
+        );
         setState(shouldListenRef.current ? "listening" : "idle");
       }
     },
@@ -250,7 +266,7 @@ export default function VoicePage() {
         shouldListenRef.current = false;
         setState("idle");
       });
-  }, [continuous, processTranscript, setupAudio]);
+  }, [continuous, processTranscript, setupAudio, settings]);
 
   const stopListening = useCallback(() => {
     shouldListenRef.current = false;

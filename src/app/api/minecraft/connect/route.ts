@@ -11,6 +11,7 @@ import {
   updateServerStatus
 } from "@/lib/store";
 import { hasPermission } from "@/lib/permissions";
+import { describeError, logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,16 +90,39 @@ export async function POST(req: NextRequest) {
     ? authMode
     : existing?.authMode ?? authMode;
 
-  const result = await botManager.connect({
-    host,
-    port,
-    version,
-    auth,
-    username,
-    protectTarget: body.protectTarget ?? getSettings().mcProtectTarget,
-    authMode: finalAuthMode,
-    serverId
-  });
+  // اتصال ماینکرفت می‌تواند استثنا بدهد (سرور خاموش، نسخهٔ ناسازگار، …)
+  // نباید هیچ‌وقت به صفحهٔ سفید HTTP 500 برسیم.
+  let result: Awaited<ReturnType<typeof botManager.connect>>;
+  try {
+    result = await botManager.connect({
+      host,
+      port,
+      version,
+      auth,
+      username,
+      protectTarget: body.protectTarget ?? getSettings().mcProtectTarget,
+      authMode: finalAuthMode,
+      serverId
+    });
+  } catch (err) {
+    const d = describeError(err);
+    logger.error("minecraft.connect_failed", {
+      host,
+      port,
+      version,
+      error: d.message
+    });
+    if (serverId != null) updateServerStatus(serverId, "error");
+    return NextResponse.json(
+      {
+        ok: false,
+        reply: `اتصال به سرور ناموفق بود: ${d.message}`,
+        error: d.message,
+        hint: "آدرس/پورت، نسخهٔ ماینکرفت سرور و در دسترس بودن سرور را بررسی کنید."
+      },
+      { status: 502 }
+    );
+  }
 
   if (serverId != null) {
     updateServerStatus(serverId, result.ok ? "connected" : "error");

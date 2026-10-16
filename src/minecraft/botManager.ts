@@ -341,8 +341,11 @@ class BotManager {
     if (this.bot) {
       try {
         this.bot.quit();
-      } catch {
-        /* نادیده بگیر */
+      } catch (err) {
+        this.log(
+          "error",
+          `قطع اتصال ربات ناموفق بود: ${(err as Error).message}`
+        );
       }
       this.bot = null;
     }
@@ -401,8 +404,11 @@ class BotManager {
       if (!this.rocketMode || !this.bot) return;
       try {
         this.rocketTick();
-      } catch {
-        /* نادیده بگیر */
+      } catch (err) {
+        this.log(
+          "error",
+          `حالت موشک ناموفق بود: ${(err as Error).message}`
+        );
       }
     }, 500);
 
@@ -411,8 +417,11 @@ class BotManager {
       if (!this.bot?.entity) return;
       try {
         this.recordPosition(false);
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `ثبت مکان در حافظه ناموفق بود: ${(err as Error).message}`
+        );
       }
     }, 30000);
 
@@ -421,8 +430,11 @@ class BotManager {
       if (!this.bot?.entity) return;
       try {
         void this.autonomyTick();
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `حلقهٔ استقلال ناموفق بود: ${(err as Error).message}`
+        );
       }
     }, 20000);
   }
@@ -456,8 +468,11 @@ class BotManager {
         try {
           bot.attack(hostile);
           this.log("combat", `🛡 دفاع خودکار (${level}): ${hostile.name ?? "ماب"}`);
-        } catch {
-          /* نادیده */
+        } catch (err) {
+          this.log(
+            "error",
+            `حملهٔ دفاعی ناموفق بود: ${(err as Error).message}`
+          );
         }
         return;
       }
@@ -550,8 +565,11 @@ class BotManager {
         const found = bot.findBlocks({ matching: id, count: 3, maxDistance: radius });
         if (found.length > 0) out.hazards.push(`${hz}×${found.length}`);
       }
-    } catch {
-      /* نادیده */
+    } catch (err) {
+      this.log(
+        "error",
+        `اسکن خطرها ناموفق بود: ${(err as Error).message}`
+      );
     }
     return out;
   }
@@ -580,8 +598,11 @@ class BotManager {
         };
         if (Array.isArray(j.waypoints)) this.posHistory = j.waypoints.slice(-50);
       }
-    } catch {
-      /* نادیده */
+    } catch (err) {
+      this.log(
+        "error",
+        `خواندن مکان‌های ذخیره‌شده ناموفق بود: ${(err as Error).message}`
+      );
     }
   }
 
@@ -595,8 +616,11 @@ class BotManager {
         JSON.stringify({ waypoints: this.posHistory.slice(-50) }),
         "utf8"
       );
-    } catch {
-      /* نادیده */
+    } catch (err) {
+      this.log(
+        "error",
+        `ذخیرهٔ مکان‌ها روی دیسک ناموفق بود: ${(err as Error).message}`
+      );
     }
   }
 
@@ -842,18 +866,27 @@ class BotManager {
     if (bot) {
       try {
         bot.pathfinder.setGoal(null);
-      } catch {
-        /* نادیده بگیر */
+      } catch (err) {
+        this.log(
+          "error",
+          `لغو مسیریابی ناموفق بود: ${(err as Error).message}`
+        );
       }
       try {
         bot.collectBlock.cancelTask();
-      } catch {
-        /* نادیده بگیر */
+      } catch (err) {
+        this.log(
+          "error",
+          `لغو وظیفهٔ جمع‌آوری بلوک ناموفق بود: ${(err as Error).message}`
+        );
       }
       try {
         bot.clearControlStates();
-      } catch {
-        /* نادیده بگیر */
+      } catch (err) {
+        this.log(
+          "error",
+          `پاک‌کردن وضعیت کنترل ناموفق بود: ${(err as Error).message}`
+        );
       }
     }
 
@@ -896,15 +929,25 @@ class BotManager {
         if (!me || !item?.position) return;
         const d = Math.hypot(me.x - item.position.x, me.y - item.position.y, me.z - item.position.z);
         if (d <= 5) this.pickupAndThank();
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `برداشتن آیتم ناموفق بود: ${(err as Error).message}`
+        );
       }
     });
 
     // همگام‌سازی شخصیت از تنظیمات برنامه
     void import("@/lib/store")
       .then((m) => this.setPersonality(m.getSettings().mcPersonality ?? "normal"))
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        this.log(
+          "error",
+          `خواندن شخصیت از تنظیمات ناموفق بود: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      });
   }
 
   /** تغییر حالت شخصیتی (زیرمجموعهٔ حالت ماینکرفت) */
@@ -958,8 +1001,11 @@ class BotManager {
     if (best) {
       try {
         bot.attack(best);
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `حملهٔ vood pump ناموفق بود: ${(err as Error).message}`
+        );
       }
       this.log("combat", `🔥 vood pump: حمله به ${best.username ?? "بازیکن"} نزدیک!`);
       if (settings.mcIsOp) void this.tpNear(best.position);
@@ -987,8 +1033,11 @@ class BotManager {
     if (best) {
       try {
         bot.attack(best);
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `حملهٔ محافظت مهربونانه ناموفق بود: ${(err as Error).message}`
+        );
       }
       this.log("combat", `💚 محافظت مهربونانه: زدن ${best.name ?? "ماب"} مزاحم!`);
     }
@@ -1038,8 +1087,11 @@ class BotManager {
         if (settings.mcIsOp) await this.tpNear(e.position);
         try {
         await bot.attack(e);
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `حمله به بازیکن اطرافیان ناموفق بود: ${(err as Error).message}`
+        );
       }
         extra++;
         this.log("combat", `⚔️ حمله به ${e.username ?? "بازیکن"} (از اطرافیان ${targetName})`);
@@ -1141,8 +1193,11 @@ class BotManager {
         const user = getSettings().userName;
         bot.chat(thanksForItems(user));
         this.log("chat", `🙏 از ${user} بابت آیتم‌ها تشکر کردم.`);
-      } catch {
-        /* نادیده */
+      } catch (err) {
+        this.log(
+          "error",
+          `تشکر از بابت آیتم ناموفق بود: ${(err as Error).message}`
+        );
       }
     })();
   }

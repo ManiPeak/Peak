@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { botManager } from "@/minecraft/botManager";
 import { getBuiltInModel } from "@/lib/builtin-models";
+import { describeError, logger } from "@/lib/logger";
+import { getAdapter, resolveConfig } from "@/lib/providers";
 import {
   applyForget,
   containsSensitiveData,
@@ -17,11 +19,7 @@ import {
 import { buildChatHistory, buildSystemPrompt, isMinecraftTopic } from "@/lib/prompt";
 import { isProviderReady, localFastReply, offlineReply } from "@/lib/offline-brain";
 import { extractThought, thoughtsFromHistory } from "@/lib/mind";
-import {
-  streamBuiltInCompletion,
-  streamChatCompletion,
-  type ChatMessage
-} from "@/lib/llm";
+import type { ChatMessage } from "@/lib/llm";
 import {
   appendMessage,
   autoTitleConversation,
@@ -31,18 +29,24 @@ import {
   listMessages,
   recentMemories
 } from "@/lib/store";
-import type { MessageMeta, ReplyMode } from "@/lib/types";
+import type { AppSettings, MessageMeta, ReplyMode } from "@/lib/types";
 import { hasPermission } from "@/lib/permissions";
 import { buildContext, extractMcTokens, runMcTokens, tryFastAction } from "@/minecraft/actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** ساخت پاسخ استریم متنی با هدرهای گفتگو */
+/** سقف طول پیام کاربر (نویسه) — از کرش دیتابیس/مدل جلوگیری می‌کند */
+const MAX_CONTENT_LENGTH = 8000;
+
+/** ساخت پاسخ استریم متنی با هدرهای گفتگو
+ *  • `providerError` فقط وقتی ست می‌شود که ارائه‌دهنده واقعاً خطا داده
+ *  • `offlineReason` دلیل «پاسخ محلی» را شفاف می‌کند (پاسخ محلی خطای ارائه‌دهنده نیست) */
 function textStream(
   text: string,
   conversationId: number,
-  mode: ReplyMode
+  mode: ReplyMode,
+  opts: { providerError?: string; offlineReason?: string } = {}
 ): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -55,31 +59,91 @@ function textStream(
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "X-Conversation-Id": String(conversationId),
-      "X-Reply-Mode": mode
+      "X-Reply-Mode": mode,
+      ...(opts.providerError ? { "X-Provider-Error": "1" } : {}),
+      ...(mode === "offline" && !opts.providerError && opts.offlineReason
+        ? { "X-Offline-Reason": opts.offlineReason }
+        : {})
     }
   });
 }
 
 export async function POST(req: NextRequest) {
-  let body: { conversationId?: number; content?: string };
+  // دروازهٔ ورودی: اعتبارسنجی دقیق بدنه — قبلاً ورودی غیررشته‌ای باعث HTTP 500 می‌شد
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { error: "بدنهٔ درخواست نامعتبر است." },
+      { error: "بدنهٔ درخواست باید JSON معتبر باشد.", code: "INVALID_JSON" },
       { status: 400 }
     );
   }
 
-  const content = (body.content ?? "").trim();
-  if (!content) {
-    return NextResponse.json({ error: "متن پیام خالی است." }, { status: 400 });
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: "بدنهٔ درخواست باید یک شیء JSON باشد.", code: "INVALID_BODY" },
+      { status: 400 }
+    );
   }
 
+  const raw = body as { conversationId?: unknown; content?: unknown };
+  if (typeof raw.content !== "string") {
+    logger.warn("chat.invalid_content", { type: typeof raw.content });
+    return NextResponse.json(
+      { error: "فیلد «content» باید رشته باشد.", code: "INVALID_CONTENT" },
+      { status: 400 }
+    );
+  }
+  const content = raw.content.trim();
+  if (!content) {
+    return NextResponse.json(
+      { error: "متن پیام خالی است.", code: "EMPTY_CONTENT" },
+      { status: 400 }
+    );
+  }
+  if (content.length > MAX_CONTENT_LENGTH) {
+    return NextResponse.json(
+      {
+        error: `پیام خیلی بلند است (حداکثر ${MAX_CONTENT_LENGTH} نویسه).`,
+        code: "CONTENT_TOO_LONG"
+      },
+      { status: 413 }
+    );
+  }
+
+  let conversationId: number | null = null;
+  if (typeof raw.conversationId === "number" && Number.isFinite(raw.conversationId)) {
+    conversationId = Math.trunc(raw.conversationId);
+  }
+
+  try {
+    return await handleChat({ content, conversationId });
+  } catch (err) {
+    // هیچ استثنایی بی‌صدا نمی‌ماند و هیچ رازی به کلاینت نشت نمی‌کند
+    const d = describeError(err);
+    logger.error("chat.unhandled", { error: d.message, name: d.name, stack: err instanceof Error ? err.stack : undefined });
+    return NextResponse.json(
+      {
+        error:
+          "خطای داخلی در پردازش پیام. جزئیات در لاگ سرور ثبت شد.",
+        code: "INTERNAL_ERROR"
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/** بدنهٔ داخلی پردازش چت — از اعتبارسنجی و مدیریت خطا جدا شده است */
+async function handleChat(input: {
+  content: string;
+  conversationId: number | null;
+}): Promise<Response> {
+  const content = input.content;
   const settings = getSettings();
 
   /* ---------------- گفتگو ---------------- */
-  let conversationId = body.conversationId ?? null;
+  let conversationId = input.conversationId;
   if (conversationId != null && !getConversation(conversationId)) {
     conversationId = null;
   }
@@ -108,7 +172,7 @@ export async function POST(req: NextRequest) {
     appendMessage(convId, "user", content);
     appendMessage(convId, "assistant", reply, meta);
     autoTitleConversation(convId, content);
-    return textStream(reply, convId, "memory");
+    return textStream(reply, convId, "memory", { offlineReason: "memory" });
   }
 
   const forgetKeyword = matchExplicitForget(content);
@@ -118,7 +182,7 @@ export async function POST(req: NextRequest) {
         "🔒 دسترسی «نوشتن در حافظه» بسته است؛ نمی‌توانم چیزی را پاک کنم.";
       appendMessage(convId, "user", content);
       appendMessage(convId, "assistant", reply, { mode: "memory" });
-      return textStream(reply, convId, "memory");
+      return textStream(reply, convId, "memory", { offlineReason: "memory" });
     }
     const count = applyForget(forgetKeyword);
     const reply =
@@ -128,7 +192,7 @@ export async function POST(req: NextRequest) {
     appendMessage(convId, "user", content);
     appendMessage(convId, "assistant", reply, { mode: "memory" });
     autoTitleConversation(convId, content);
-    return textStream(reply, convId, "memory");
+    return textStream(reply, convId, "memory", { offlineReason: "memory" });
   }
 
   /* ---------------- رهگیری دستورهای ماینکرفت (محلی و سریع) ---------------- */
@@ -151,7 +215,7 @@ export async function POST(req: NextRequest) {
       command: mcResult.command
     });
     autoTitleConversation(convId, content);
-    return textStream(reply, convId, "minecraft");
+    return textStream(reply, convId, "minecraft", { offlineReason: "minecraft-command" });
   }
 
   /* ---------------- مچ سریع فارسی/فینگیلیش — تأخیر تقریباً صفر ---------------- */
@@ -165,7 +229,7 @@ export async function POST(req: NextRequest) {
         command: "fast"
       });
       autoTitleConversation(convId, content);
-      return textStream(fast.reply, convId, "minecraft");
+      return textStream(fast.reply, convId, "minecraft", { offlineReason: "minecraft-fast" });
     }
   }
 
@@ -177,7 +241,7 @@ export async function POST(req: NextRequest) {
       appendMessage(convId, "user", content);
       appendMessage(convId, "assistant", fastLocal, { mode: "offline" });
       autoTitleConversation(convId, content);
-      return textStream(fastLocal, convId, "offline");
+      return textStream(fastLocal, convId, "offline", { offlineReason: "local-skill" });
     }
   }
 
@@ -210,7 +274,7 @@ export async function POST(req: NextRequest) {
       appendMessage(convId, "user", content);
       appendMessage(convId, "assistant", reply, { mode: "offline", mod: hit.mod.id });
       autoTitleConversation(convId, content);
-      return textStream(reply, convId, "offline");
+      return textStream(reply, convId, "offline", { offlineReason: "mod" });
     }
   }
 
@@ -226,7 +290,7 @@ export async function POST(req: NextRequest) {
       appendMessage(convId, "user", content);
       appendMessage(convId, "assistant", probeReply, { mode: "offline" });
       autoTitleConversation(convId, content);
-      return textStream(probeReply, convId, "offline");
+      return textStream(probeReply, convId, "offline", { offlineReason: "ai-probe" });
     }
   }
 
@@ -245,7 +309,7 @@ export async function POST(req: NextRequest) {
       command: "offline-gate"
     });
     autoTitleConversation(convId, content);
-    return textStream(reply, convId, "minecraft");
+    return textStream(reply, convId, "minecraft", { offlineReason: "minecraft-offline-gate" });
   }
 
   /* ---------------- قانون ۳ حافظه: استخراج خودکار ---------------- */
@@ -289,46 +353,96 @@ export async function POST(req: NextRequest) {
       mode: "offline",
       blocked: !hasPermission(settings, "aiNetwork") || undefined
     });
-    return textStream(reply, convId, "offline");
+    return textStream(reply, convId, "offline", {
+      offlineReason: hasPermission(settings, "aiNetwork")
+        ? "provider-not-ready"
+        : "permission-blocked"
+    });
   }
 
   /* ---------------- استریم از ارائه‌دهنده با سقوط امن به آفلاین ---------------- */
   const encoder = new TextEncoder();
+  const providerCfg = resolveConfig(settings);
+  const adapter = getAdapter(settings.provider);
+
+  logger.info("chat.request", {
+    conversationId: convId,
+    provider: providerCfg.provider,
+    baseUrl: providerCfg.baseUrl,
+    model: providerCfg.model,
+    apiKeySource: providerCfg.sources.apiKey
+  });
+
+  // «پیش‌گرم» استریم: اولین تکه را قبل از ارسال هدرها می‌خوانیم تا
+  // X-Reply-Mode و X-Provider واقعاً همان چیزی باشند که اتفاق می‌افتد.
+  const generator = adapter.stream(providerCfg, llmMessages);
+  let primed: string | null = null;
+  let primeError: string | null = null;
+  try {
+    const first = await generator.next();
+    if (!first.done) primed = first.value;
+  } catch (err) {
+    primeError = describeError(err).message;
+    logger.warn("chat.provider_failed_before_stream", {
+      provider: providerCfg.provider,
+      baseUrl: providerCfg.baseUrl,
+      model: providerCfg.model,
+      error: primeError
+    });
+  }
+
   let fullText = "";
   let failed: string | null = null;
+  let mode: ReplyMode = "llm";
+  let fallbackText: string | null = null;
+
+  if (primeError) {
+    // ارائه‌دهنده پاسخ نداد — به مغز آفلاین سقوط می‌کنیم ولی دلیل را پنهان نمی‌کنیم
+    failed = primeError;
+    mode = "offline";
+    meta.mode = "offline";
+    meta.error = primeError;
+    fallbackText = `${providerFailureNotice(primeError, settings)}\n\n${offlineReply(
+      content,
+      { settings, memories }
+    )}`;
+    fullText = fallbackText;
+  } else {
+    meta.mode = "llm";
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        if (settings.provider === "builtin") {
-          // مدل داخلی رایگان — بدون کلید API
-          const preset = getBuiltInModel(settings.model);
-          for await (const chunk of streamBuiltInCompletion({
-            backendModel: preset.backendModel,
-            messages: llmMessages
-          })) {
-            fullText += chunk;
-            controller.enqueue(encoder.encode(chunk));
-          }
+        if (fallbackText !== null) {
+          // پاسخ جایگزین آماده است — همان را به کلاینت می‌فرستیم
+          controller.enqueue(encoder.encode(fallbackText));
         } else {
-          for await (const chunk of streamChatCompletion({
-            baseUrl: settings.baseUrl,
-            apiKey: settings.apiKey,
-            model: settings.model,
-            messages: llmMessages
-          })) {
+          if (primed !== null) {
+            fullText += primed;
+            controller.enqueue(encoder.encode(primed));
+          }
+          for await (const chunk of generator) {
             fullText += chunk;
             controller.enqueue(encoder.encode(chunk));
           }
         }
-        meta.mode = "llm";
       } catch (err) {
-        // سقوط به مغز آفلاین — بدون خطای قرمز برای کاربر
-        failed = err instanceof Error ? err.message : "خطای ناشناخته";
+        // سقوط به مغز آفلاین — دلیل خطا به کاربر و لاگ می‌رود
+        failed = describeError(err).message;
+        mode = "offline";
         meta.error = failed;
         meta.mode = "offline";
-        const fallback = offlineReply(content, { settings, memories });
-        fullText = fallback;
+        logger.warn("chat.provider_stream_failed", {
+          provider: providerCfg.provider,
+          model: providerCfg.model,
+          error: failed
+        });
+        const fallback = `${providerFailureNotice(failed, settings)}\n\n${offlineReply(
+          content,
+          { settings, memories }
+        )}`;
+        fullText += fallback;
         controller.enqueue(encoder.encode(fallback));
       } finally {
         // اجرای توکن‌های اکشن ماینکرفت (هوش طبیعی — «[[mc:id|args]]»)
@@ -348,14 +462,30 @@ export async function POST(req: NextRequest) {
               reply: r.reply
             }));
           }
-        } catch {
-          /* نادیده */
+        } catch (err) {
+          logger.warn("chat.mc_token_failed", {
+            error: describeError(err).message
+          });
         }
         // ذهن: فکر خط اول 💡 در متادیتا می‌رود؛ متن کامل (همراه فکر) در تاریخچه می‌ماند
         const { thought } = extractThought(fullText);
         if (thought) meta.thought = thought;
-        appendMessage(convId, "assistant", saveText, meta);
-        controller.close();
+        try {
+          appendMessage(convId, "assistant", saveText, meta);
+        } catch (err) {
+          logger.error("chat.persist_failed", { error: describeError(err).message });
+        }
+        logger.info("chat.reply", {
+          conversationId: convId,
+          mode,
+          failed: failed ?? undefined,
+          length: saveText.length
+        });
+        try {
+          controller.close();
+        } catch {
+          /* کلاینت رفته */
+        }
       }
     }
   });
@@ -364,7 +494,25 @@ export async function POST(req: NextRequest) {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "X-Conversation-Id": String(convId),
-      "X-Reply-Mode": meta.mode
+      // حالا این هدر واقعی است، نه حدس قبل از اجرا
+      "X-Reply-Mode": mode,
+      "X-Provider": providerCfg.provider,
+      "X-Model": providerCfg.model,
+      ...(failed ? { "X-Provider-Error": "1" } : {})
     }
   });
+}
+
+/** پیام کوتاه و صادقانه برای وقتی ارائه‌دهنده جواب نمی‌دهد */
+function providerFailureNotice(error: string, settings: AppSettings): string {
+  const provider = settings.provider;
+  const hints: Record<string, string> = {
+    ollama: "بررسی کن Ollama در حال اجرا باشد و مدل نصب باشد: `ollama list`",
+    openrouter: "کلید OPENROUTER_API_KEY و نام دقیق مدل را بررسی کن.",
+    builtin: "سرویس داخلی رایگان در دسترس نیست (اینترنت یا خود سرویس).",
+    "9router": "بررسی کن 9Router روی همان پورت بالا آمده باشد."
+  };
+  return `⚠️ ارائه‌دهندهٔ «${provider}» پاسخ نداد — برای همین به حالت آفلاین برگشتم.\nجزئیات: ${error}\n${
+    hints[provider] ?? "در صفحهٔ تنظیمات، «تست اتصال» را بزنید."
+  }`;
 }

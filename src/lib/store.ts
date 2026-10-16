@@ -59,17 +59,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   permissions: mergePermissions()
 };
 
-/** نگاشت ارائه‌دهنده به آدرس پایه */
-export const PROVIDER_BASE_URLS: Record<string, string> = {
-  builtin: "https://text.pollinations.ai/",
-  openai: "https://api.openai.com/v1",
-  openrouter: "https://openrouter.ai/api/v1",
-  groq: "https://api.groq.com/openai/v1",
-  xai: "https://api.x.ai/v1",
-  ollama: "http://localhost:11434/v1",
-  lmstudio: "http://localhost:1234/v1",
-  custom: ""
-};
+/** نگاشت ارائه‌دهنده به آدرس پایه (از رجیستری ارائه‌دهنده‌ها — منبع واحد حقیقت) */
+export { PROVIDER_BASE_URLS } from "@/lib/providers";
 
 /* ------------------------------------------------------------------ */
 /* کمکی‌های تبدیل                                                      */
