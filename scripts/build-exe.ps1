@@ -11,6 +11,12 @@ function Fail($msg) {
 Write-Host "== diagnostics =="
 Write-Host ("node: " + (node -v) + "   npm: " + (npm -v))
 
+# ---------- 0) پاک‌سازی خروجی قبلی ----------
+# بدون این کار، EXE های کهنهٔ مانده در dist جمع‌آوری و منتشر می‌شوند (علت ریشه‌ای «لینک Latest نسخهٔ قدیمی را می‌دهد»)
+if (Test-Path "dist") { Remove-Item "dist" -Recurse -Force }
+Remove-Item "dist-log.txt", "npm-log.txt", "package-check.txt" -Force -ErrorAction SilentlyContinue
+Write-Host "dist cleaned OK"
+
 # فعال‌سازی مسیرهای طولانی ویندوز (رفع خطای طول مسیر هنگام بسته‌بندی node_modules)
 try {
   reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
@@ -40,13 +46,32 @@ if ($LASTEXITCODE -ne 0) { Fail "next build FAILED" }
 if (-not (Test-Path ".next/BUILD_ID")) { Fail "next build produced no .next/BUILD_ID" }
 
 # ---------- 3) Node قابل‌حمل برای داخل بسته ----------
+# حیاتی: بدون این پوشه، برنامه روی سیستمی که Node ندارد باز نمی‌شود
+# (علت ریشه‌ای «نصب شد ولی باز نشد» — resources/node/node.exe داخل بسته نبود)
 $v = "v22.11.0"
-Invoke-WebRequest ("https://nodejs.org/dist/" + $v + "/node-" + $v + "-win-x64.zip") -OutFile node.zip
-Expand-Archive node.zip -DestinationPath node-tmp -Force
+if (Test-Path "vendor/node") { Remove-Item "vendor/node" -Recurse -Force }
+if (Test-Path "node-tmp") { Remove-Item "node-tmp" -Recurse -Force }
+if (Test-Path "node.zip") { Remove-Item "node.zip" -Force }
+try {
+  Invoke-WebRequest ("https://nodejs.org/dist/" + $v + "/node-" + $v + "-win-x64.zip") -OutFile node.zip
+  Expand-Archive node.zip -DestinationPath node-tmp -Force
+} catch {
+  Fail ("دانلود/استخراج Node قابل‌حمل ناموفق بود (" + $v + ") — " + $_.Exception.Message)
+}
 New-Item -ItemType Directory -Force -Path vendor | Out-Null
-Move-Item ("node-tmp/node-" + $v + "-win-x64") vendor/node -Force
-Remove-Item node.zip -Force
-Remove-Item node-tmp -Recurse -Force
+Move-Item ("node-tmp/node-" + $v + "-win-x64") "vendor/node" -Force
+Remove-Item node.zip -Force -ErrorAction SilentlyContinue
+Remove-Item node-tmp -Recurse -Force -ErrorAction SilentlyContinue
+
+# بررسی قطعی — اگر Node داخل بسته نباشد، همان‌جا با پیام گویا رد شو،
+# نه اینکه EXE ای منتشر شود که روی سیستم کاربر باز نمی‌شود
+if (-not (Test-Path "vendor/node/node.exe")) {
+  Fail ("vendor/node/node.exe ساخته نشد — Node قابل‌حمل داخل بسته نیست (مسیر: " + (Resolve-Path "vendor" -ErrorAction SilentlyContinue) + ")")
+}
+if (-not (Test-Path "vendor/node/node_modules/npm/bin/npm-cli.js")) {
+  Write-Host "::warning::npm داخل Node قابل‌حمل پیدا نشد — مرحلهٔ بازسازی better-sqlite3 ممکن است انجام نشود"
+}
+Write-Host ("bundled node OK: " + (& vendor\node\node.exe --version))
 
 # ---------- 3.5) بررسی سازگاری better-sqlite3 با Node داخل بسته (علت رایج باز نشدن) ----------
 Write-Host "== verify native ABI with bundled node =="
@@ -170,6 +195,15 @@ foreach ($f in $exes) {
 $final = @(Get-ChildItem "dist" -Filter "*.exe" -ErrorAction SilentlyContinue)
 Write-Host "== dist contents =="
 Get-ChildItem "dist" -ErrorAction SilentlyContinue | Format-Table Name, Length
+
+# ---------- 6.5) بازرسی بستهٔ ساخته‌شده ----------
+# همان دو موردی که قبلاً بی‌صدا خراب می‌شد: resources/node/node.exe و resources/app/.next/BUILD_ID
+# در گیت‌هاب، همین بررسی به‌صورت مرحلهٔ جداگانه اجرا و در خلاصهٔ run نوشته می‌شود؛
+# اینجا فقط برای اجرای محلی (powershell -File scripts\build-exe.ps1) تکرار می‌شود.
+if (-not $env:GITHUB_ACTIONS) {
+  Write-Host "== package check (local) =="
+  node scripts/package-check.mjs --no-summary
+}
 
 # ---------- 7) گزارش روی صفحهٔ run ----------
 $tail = ""

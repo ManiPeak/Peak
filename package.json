@@ -1,6 +1,6 @@
 {
   "name": "peak",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Peak — دستیار هوش مصنوعی شخصی Local-First با حافظهٔ دائمی، صوت فارسی و پل ماینکرفت",
   "main": "electron/main.js",
@@ -15,6 +15,7 @@
     "test:live": "PEAK_RUN_LIVE_TESTS=1 node --import tsx --test tests/*.test.ts tests/*.test.mts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "check:package": "node scripts/package-check.mjs",
     "electron": "electron .",
     "dist:win": "electron-builder --win --publish=never"
   },

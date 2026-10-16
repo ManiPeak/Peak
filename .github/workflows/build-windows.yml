@@ -1,5 +1,10 @@
 # ساخت خودکار EXE ویندوز — Peak
-# همهٔ کارها داخل scripts/build-exe.ps1 انجام می‌شود
+#
+# ۱) ساخت کامل با scripts/build-exe.ps1 (نصب وابستگی ← بیلد Next ← Node قابل‌حمل ← electron-builder)
+# ۲) ساخت نام‌های ثابت Peak-Setup-Latest.exe / Peak-Portable-Latest.exe
+# ۳) بازرسی بستهٔ ساخته‌شده (resources/node/node.exe و .next/BUILD_ID) با هشدار گویا
+# ۴) انتشار در «ریلیز چرخشی» با برچسب latest و make_latest=true
+#    → لینک ثابت https://github.com/ManiPeak/Peak/releases/latest/download/Peak-Setup-Latest.exe
 name: Build Windows EXE
 
 on:
@@ -12,6 +17,11 @@ on:
 
 permissions:
   contents: write
+
+# اجراها پشت سر هم (نه موازی) تا دو آپلود ~۸۵۰ مگابایتی هم‌زمان روی یک ریلیز خراب‌کاری نکنند
+concurrency:
+  group: build-windows-release
+  cancel-in-progress: false
 
 jobs:
   build-windows:
@@ -29,32 +39,89 @@ jobs:
         shell: pwsh
         run: ./scripts/build-exe.ps1
 
+      # نام‌های ثابت — همیشه ساخته می‌شوند تا هم Artifact و هم Release همان لینک‌های README را داشته باشند
+      - name: Make Latest names
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $s = @(Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -match "(?i)setup" -and $_.Name -notmatch "(?i)latest" })
+          $p = @(Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -match "(?i)portable" -and $_.Name -notmatch "(?i)latest" })
+          if ($s.Count -gt 0) {
+            Copy-Item $s[0].FullName "dist/Peak-Setup-Latest.exe" -Force
+            Write-Host ("Latest setup  = " + $s[0].Name + "  -> dist/Peak-Setup-Latest.exe")
+          } else {
+            Write-Host "::warning::هیچ فایل Setup ای در dist ساخته نشد — Peak-Setup-Latest.exe ساخته نشد."
+          }
+          if ($p.Count -gt 0) {
+            Copy-Item $p[0].FullName "dist/Peak-Portable-Latest.exe" -Force
+            Write-Host ("Latest portable = " + $p[0].Name + "  -> dist/Peak-Portable-Latest.exe")
+          } else {
+            Write-Host "::warning::هیچ فایل Portable ای در dist ساخته نشد — Peak-Portable-Latest.exe ساخته نشد."
+          }
+
+      # بازرسی محتوای بسته — دقیقاً همان دو موردی که قبلاً بی‌صدا خراب می‌شد:
+      # resources/node/node.exe (Node داخل بسته) و resources/app/.next/BUILD_ID (بیلد Next)
+      - name: Package check (resources/node/node.exe + .next/BUILD_ID)
+        if: always()
+        shell: pwsh
+        run: |
+          node scripts/package-check.mjs 2>&1 | Tee-Object -FilePath package-check.txt
+          Write-Host "---- package-check.txt ----"
+          Get-Content package-check.txt -ErrorAction SilentlyContinue | Select-Object -Last 40
+
+      # Artifact ها — همان فایل‌هایی که در README/برنامه معرفی شده‌اند
+      # (اگر ساخت شکست خورده باشد، این مرحله فقط هشدار می‌دهد؛ علت اصلی جای دیگری با ::error:: گزارش شده است)
       - name: Upload EXEs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Peak-Windows-EXE
           path: dist/*.exe
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Build-Log
-          path: dist-log.txt
+          path: |
+            dist-log.txt
+            npm-log.txt
+            package-check.txt
           if-no-files-found: ignore
 
-      - name: Make Latest names
-        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        run: |
-          $s = @(Get-ChildItem dist -Filter *.exe | Where-Object { $_.Name -match "(?i)setup" })
-          $p = @(Get-ChildItem dist -Filter *.exe | Where-Object { $_.Name -match "(?i)portable" })
-          if ($s.Count -gt 0) { Copy-Item $s[0].FullName "dist/Peak-Setup-Latest.exe" -Force }
-          if ($p.Count -gt 0) { Copy-Item $p[0].FullName "dist/Peak-Portable-Latest.exe" -Force }
-
-      - name: Publish to GitHub Release
-        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+      # انتشار: روی main/master → ریلیز چرخشی با برچسب latest (و make_latest=true)
+      #          روی tag/release → همان ریلیزِ همان برچسب
+      # فقط فایل‌های نصبی منتشر می‌شوند (نه Peak.exe/node.exe/elevate.exe) تا صفحهٔ دانلود ساده بماند
+      - name: Publish release
+        if: always() && hashFiles('dist/Peak-Setup-Latest.exe') != ''
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || 'Peak — نسخهٔ چرخشی (Latest)' }}
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/Peak-Setup-*.exe
+            dist/Peak-Portable-*.exe
+          body: |
+            ### 📥 دانلود ساده
+
+            | فایل | برای چه کسی |
+            |---|---|
+            | **`Peak-Setup-Latest.exe`** | نصب‌کننده — در نصب فقط **محل نصب** را انتخاب کن، بقیه از پیش درست است |
+            | **`Peak-Portable-Latest.exe`** | اجرای بدون نصب (روی فلش هم کار می‌کند) |
+
+            **Node.js لازم نیست** — داخل خود بسته است. هیچ پیش‌نیاز دیگری هم لازم نیست.
+
+            لینک‌های ثابت (همیشه همین نسخه، بدون گشتن دنبال شمارهٔ نسخه):
+
+            * نصب‌کننده: <https://github.com/ManiPeak/Peak/releases/latest/download/Peak-Setup-Latest.exe>
+            * پرتابل: <https://github.com/ManiPeak/Peak/releases/latest/download/Peak-Portable-Latest.exe>
+
+            اگر ویندوز هشدار SmartScreen داد: **More info → Run anyway** (برنامه امضا نشده است).
+            اگر برنامه باز نشد: فایل `%APPDATA%\Peak\data\peak-log.txt` علت دقیق را می‌گوید.
