@@ -77,9 +77,19 @@ const config = {
 };
 
 // اگر Node قابل حمل آماده شده باشد، داخل بسته قرار بگیرد
-// (ورک‌فلوی گیت‌هاب این پوشه را قبل از بسته‌بندی می‌سازد)
+// (ورک‌فلوی گیت‌هاب و scripts/build-exe.ps1 این پوشه را قبل از بسته‌بندی می‌سازند)
 if (fs.existsSync("vendor/node")) {
   config.extraResources = [{ from: "vendor/node", to: "node" }];
+  console.log("[electron-builder] Node قابل‌حمل پیدا شد → داخل بسته قرار می‌گیرد (resources/node)");
+} else {
+  // بدون این پوشه، برنامه روی سیستمی که Node ندارد باز نمی‌شود.
+  // عمداً فقط هشدار می‌دهیم (ساخت را نمی‌شکنیم) تا کاربر بداند بستهٔ خروجی کامل نیست.
+  console.warn(
+    "[electron-builder] هشدار: پوشهٔ vendor/node پیدا نشد — Node داخل بسته قرار نمی‌گیرد و " +
+      "برنامه روی سیستمی که Node ندارد باز نمی‌شود.\n" +
+      "                   برای بستهٔ کامل: powershell -ExecutionPolicy Bypass -File scripts\\build-exe.ps1\n" +
+      "                   برای بازرسی بستهٔ ساخته‌شده: npm run check:package"
+  );
 }
 
 module.exports = config;
