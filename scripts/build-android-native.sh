@@ -19,7 +19,7 @@ API_LEVEL=24
 NODEDIR="$ROOT/android/vendor/libnode"
 ASSETS_BSQL="$ROOT/android/app/src/main/assets/app/node_modules/better-sqlite3"
 
-die() { echo "[build-android-native] خطا: $*" >&2; exit 1; }
+die() { echo "::error::[build-android-native] $*" >&2; echo "[build-android-native] خطا: $*" >&2; exit 1; }
 log() { echo "[build-android-native] $*"; }
 
 # --- بررسی پیش‌نیازها ---
@@ -29,6 +29,7 @@ log() { echo "[build-android-native] $*"; }
 command -v python3 >/dev/null || die "python3 لازم است"
 
 PREBUILT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt"
+[ -d "$PREBUILT" ] || die "پوشهٔ prebuilt در NDK نیست: $PREBUILT (ANDROID_NDK_HOME=$ANDROID_NDK_HOME)"
 HOST_TAG="$(ls "$PREBUILT" | head -1)"
 TOOLCHAIN="$PREBUILT/$HOST_TAG"
 [ -d "$TOOLCHAIN" ] || die "toolchain llvm در NDK پیدا نشد: $PREBUILT"
