@@ -66,13 +66,19 @@ GYP="$GYP_CACHE/package/bin/node-gyp.js"
 log "کراس‌کامپایل better-sqlite3 برای $ABI (Node $TARGET_VERSION / ABI $NODE_MODULE_VERSION)…"
 cd "$ROOT/node_modules/better-sqlite3"
 rm -rf build
-node "$GYP" rebuild \
+if ! node "$GYP" rebuild \
   --nodedir="$NODEDIR" \
   --target="$TARGET_VERSION" \
   --arch="$GYP_ARCH" \
   --devdir="$ROOT/android/vendor/.cache/node-gyp" \
   -- \
-  -DOS=android -Dtarget_arch="$GYP_ARCH"
+  -DOS=android -Dtarget_arch="$GYP_ARCH" > /tmp/peak-gyp.log 2>&1; then
+  # Surface the tail as annotations (job log downloads are not always reachable)
+  grep -iE "error|exception|traceback|gyp err" /tmp/peak-gyp.log | tail -8 | while IFS= read -r line; do echo "::error::gyp: $line"; done || true
+  tail -20 /tmp/peak-gyp.log >&2
+  die "node-gyp rebuild failed (python3: $(python3 --version 2>&1); see gyp annotations above)"
+fi
+cat /tmp/peak-gyp.log
 
 BUILT="build/Release/better_sqlite3.node"
 [ -f "$BUILT" ] || die "خروجی ساخته نشد: $BUILT"
