@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Volume2, Loader2, Send } from "lucide-react";
-import { Btn, Field, PageTitle, Toggle } from "@/components/ui";
+import { Btn, Field, PageTitle, Toggle } from "@/components/ui-kit";
 import {
   apiGet,
   createSpeechStream,
@@ -14,7 +14,7 @@ import {
   stopSpeaking
 } from "@/lib/client";
 import { hasPermission } from "@/lib/permissions";
-import { EmergencyStop } from "@/components/EmergencyStop";
+import { EmergencyStop } from "@/components/ui-kit";
 import type { PublicSettings } from "@/lib/types";
 import { startStt, type SttSession } from "@/lib/stt";
 

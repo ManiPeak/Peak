@@ -16,9 +16,9 @@ import {
   X
 } from "lucide-react";
 import Link from "next/link";
-import { Btn } from "@/components/ui";
-import { PeakLogo } from "@/components/PeakLogo";
-import { EmergencyStop } from "@/components/EmergencyStop";
+import { Btn } from "@/components/ui-kit";
+import { PeakLogo } from "@/components/ui-kit";
+import { EmergencyStop } from "@/components/ui-kit";
 import {
   apiGet,
   apiSend,
@@ -28,7 +28,7 @@ import {
   stopSpeaking
 } from "@/lib/client";
 import { hasPermission } from "@/lib/permissions";
-import { stripMcTokens } from "@/lib/mcTokens";
+import { stripMcTokens } from "@/lib/pure-utils";
 import type {
   ConversationDTO,
   MessageDTO,

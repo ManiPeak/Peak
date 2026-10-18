@@ -2,11 +2,17 @@
 
 ## نسخهٔ ۱.۰.۳ — «بهینه‌سازی سبک (Light Optimization)»
 
-* **📦 بهینه‌سازی به ۱۰۰ فایل — سبک‌تر، سریع‌تر، تمیزتر**: تعداد فایل‌های سورس از ۱۵۴ به **۱۰۰** کاهش یافت (≈۳۶٪ سبک‌تر) بدون حذف قابلیت؛ کلون سریع‌تر، جستجو سریع‌تر، نگهداری آسان‌تر.
-* **🔢 نسخه ۱.۰.۳**: `package.json` و `android/app/build.gradle` (versionCode 4) همگام‌سازی شد
-* **🚀 انتشار خودکار**: ورک‌فلوهای GitHub Actions برای ۱.۰.۳ به‌روز شدند
-* **🧪 تست پایداری**: تمام ۶۸ تست با ساختار جدید پاس می‌شوند
-
+* **🔢 نسخهٔ ۱.۰.۳**: `package.json`/`package-lock.json` به 1.0.3 و اندروید `versionCode 4` (نام نسخه خودکار از `package.json`)
+* **📦 حداکثر ۱۰۰ فایل**: سورس از ۱۵۴ به **۱۰۰ فایل** رسید (قابل آپلود با وب گیت‌هاب) — بدون حذف هیچ قابلیت یا مسیر API؛ همهٔ ۲۳ مسیر API و هر ۹ صفحه سر جایشان‌اند. ادغام‌ها (با به‌روزرسانی همهٔ ایمپورت‌ها و پاس شدن `typecheck`/`build`/`test`):
+  - `src/lib/providers/` (۷ فایل) ← `src/lib/providers.ts` (۱ فایل — `envStr` مشترک نگه داشته شد)
+  - `aiCatalog+builtin-models+aiProbe` ← `src/lib/ai-core.ts` · `persian+mcTokens+mind+mods-data` ← `src/lib/pure-utils.ts`
+  - `minecraft/{types,personality,parser,chatBridge}` ← `src/minecraft/core.ts` · `components/{ui,PeakLogo,EmergencyStop}` ← `components/ui-kit.tsx`
+  - اسکریپت‌ها ۷←۴: `scripts/cli.ts` (diagnose+sync-db با dispatch) + `scripts/tools.mjs` (package-check+prepare-android-assets+release-notes) + `build-exe.ps1` + `build-android-native.sh` (دست‌نخورده)
+  - CI دو ورک‌فلو ← یک ورک‌فلوی معتبر `.github/workflows/ci.yml` (verify + ویندوز + اندروید + پیوست خودکار ZIP سورس به Release روی تگ)
+  - مستندات ۶←۱ (`docs/README.md`) + مقادیر اندروید ۳←۱ + فقط ۲ تراکم آیکون (بقیه با اسکیل سیستم‌عامل) + حذف `_release-kit/` (به‌جای آن Git+GitHub Release) و اسکرین‌شات‌های بدون ارجاع `docs/images/`
+* **🧪 تست‌ها — صادقانه**: سوئیت کامل ۶۸تایی نسخهٔ ۱.۰.۲ در `Peak-1.0.2.zip` (گوگل‌درایو) حفظ شده؛ در ریپو به‌خاطر سقف ۱۰۰ فایل یک سوئیت رگرسیون تجمیعی واقعی (`tests/peak.test.mts`) جایگزین شد که خودِ ادغام‌ها، نسخه و سقف فایل را بررسی می‌کند
+* **🧹 حذف‌های مستند**: `.env.example` (قالبش حالا پیوست `docs/README.md` است) · `drizzle.config.ts` (برنامه برای اجرا به آن نیاز ندارد) · `release/start-peak.bat` (از glob بسته‌بندی هم حذف شد)
+* **🚀 انتشار**: push به `main` + تگ `v1.0.3` — نصب‌کننده/پرتابل و APK و `Peak-1.0.3.zip` به‌صورت خودکار در GitHub Actions ساخته و به Release پیوست می‌شوند
 
 ## نسخهٔ ۱.۰.۲ — «مهروموم خدایی (Divine Seal)»
 

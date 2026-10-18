@@ -40,5 +40,7 @@ android/build/
 android/app/build/
 android/local.properties
 *.apk
-*.aabgoogle_drive/
-/tmp/
+*.aab
+
+# local drive download (not in repo)
+google_drive/

@@ -22,19 +22,19 @@ import {
   MC_HELP_TEXT,
   normalizeBlockName,
   parseCommand
-} from "@/minecraft/parser";
+} from "@/minecraft/core";
 import type {
   BotLogEntry,
   BotStatus,
   CommandResult,
   ConnectOptions,
   LogType
-} from "@/minecraft/types";
+} from "@/minecraft/core";
 import {
   AUTH_PASSWORD,
   isProtected,
   thanksForItems
-} from "@/minecraft/personality";
+} from "@/minecraft/core";
 import { getSettings } from "@/lib/store";
 
 /** فهرست ماب‌های خصم برای حالت محافظت و حملهٔ خودکار */

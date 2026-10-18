@@ -14,7 +14,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { Btn, Card, Field, Label, PageTitle, Toggle } from "@/components/ui";
+import { Btn, Card, Field, Label, PageTitle, Toggle } from "@/components/ui-kit";
 import { apiGet, apiSend } from "@/lib/client";
 import type {
   MemoryCategory,

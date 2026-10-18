@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { botManager } from "@/minecraft/botManager";
-import { installChatBridge } from "@/minecraft/chatBridge";
+import { installChatBridge } from "@/minecraft/core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

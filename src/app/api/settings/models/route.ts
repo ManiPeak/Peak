@@ -6,7 +6,7 @@
  * و اگر سرویس در دسترس نباشد، reachable:false برمی‌گرداند (نه لیست ساختگی).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { BUILT_IN_MODELS } from "@/lib/builtin-models";
+import { BUILT_IN_MODELS } from "@/lib/ai-core";
 import { getAdapter, isProviderId, resolveConfig } from "@/lib/providers";
 import { getSettings, maskApiKey } from "@/lib/store";
 import { describeError, logger } from "@/lib/logger";

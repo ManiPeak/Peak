@@ -6,7 +6,7 @@
  * منطق واقعی هر ارائه‌دهنده در src/lib/providers/* قرار دارد.
  */
 import type { AppSettings, ConnectionTestResult, ProviderId } from "@/lib/types";
-import type { ProviderMessage, ResolvedProviderConfig } from "@/lib/providers/types";
+import type { ProviderMessage, ResolvedProviderConfig } from "@/lib/providers";
 import {
   backendModelFor,
   completeOnce,
@@ -17,7 +17,7 @@ import {
   resolveConfig,
   streamCompletion
 } from "@/lib/providers";
-import { BUILT_IN_API_URL } from "@/lib/providers/pollinations";
+import { BUILT_IN_API_URL } from "@/lib/providers";
 import { logger, redact } from "@/lib/logger";
 
 export type ChatMessage = ProviderMessage;

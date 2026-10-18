@@ -20,7 +20,7 @@ android {
 
     defaultConfig {
         applicationId "com.peak.app"
-        // نسخه از package.json (الان 1.0.2) — هیچ هاردکدی نیست
+        // نسخه از package.json (1.0.3) — هیچ هاردکدی نیست
         versionName rootPkg.version.toString()
         versionCode 4
         minSdk 24

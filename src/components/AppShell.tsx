@@ -18,8 +18,8 @@ import {
   ShieldCheck,
   Zap
 } from "lucide-react";
-import { PeakLogo } from "@/components/PeakLogo";
-import { EmergencyStop } from "@/components/EmergencyStop";
+import { PeakLogo } from "@/components/ui-kit";
+import { EmergencyStop } from "@/components/ui-kit";
 import { prewarmTTS } from "@/lib/client";
 
 const NAV_ITEMS = [

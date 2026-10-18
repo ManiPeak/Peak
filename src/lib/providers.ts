@@ -1,5 +1,114 @@
-// Peak 1.0.3 — Consolidated Providers (7 → 1)
-// All provider logic merged for 99-file optimization
+// Peak 1.0.3 — Consolidated providers (7 files -> 1: types+http+ollama+openaiCompatible+openrouter+pollinations+index)
+// Single shared envStr (widest signature) retained from openaiCompatible.
+import type { AppSettings, ProviderId } from "@/lib/types";
+import { describeError, logger, redact } from "@/lib/logger";
+import { isBuiltInModelId } from "@/lib/ai-core";
+
+/* ===== merged from providers/types.ts ===== */
+/**
+ * قرارداد لایهٔ ارائه‌دهنده‌ها (Provider Layer)
+ *
+ * هر ارائه‌دهنده یک آداپتور است با سه توانایی اصلی:
+ *   resolve()  → تبدیل تنظیمات کاربر + متغیرهای محیطی به یک پیکربندی قطعی
+ *   listModels()→ فهرست مدل‌های واقعاً موجود (نه حدسی)
+ *   check()    → تست واقعی: دسترسی‌پذیری + احراز هویت + وجود مدل + یک تولید کوتاه
+ *
+ * قرارداد صادقانه: اگر تستی انجام نشده، status باید NOT_TESTED باشد — نه PASS.
+ */
+
+export type CheckStatus = "PASS" | "FAIL" | "NOT_TESTED" | "SKIPPED";
+
+export interface ProviderCheck {
+  /** شناسهٔ ماشین‌خوان مرحله (مثلاً reachability / auth / model / generation) */
+  id: string;
+  /** عنوان فارسی برای نمایش */
+  label: string;
+  status: CheckStatus;
+  detail: string;
+  /** راه‌حل عملی برای کاربر */
+  hint?: string;
+  /** دادهٔ کمکی (مثلاً فهرست مدل‌های نصب‌شده) */
+  data?: Record<string, unknown>;
+  /** مدت زمان تست به میلی‌ثانیه */
+  latencyMs?: number;
+}
+
+export interface ProviderMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/** پیکربندی نهایی و قطعی ارائه‌دهنده (بدون راز در خروجی لاگ) */
+export interface ResolvedProviderConfig {
+  provider: ProviderId;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  /** هدرهای اضافهٔ لازم (مثلاً HTTP-Referer در OpenRouter) */
+  headers: Record<string, string>;
+  /** منبع هر مقدار: settings | env | default */
+  sources: {
+    baseUrl: "settings" | "env" | "default";
+    model: "settings" | "env" | "default";
+    apiKey: "settings" | "env" | "none";
+  };
+}
+
+export interface CompletionResult {
+  text: string;
+  model: string;
+  latencyMs: number;
+}
+
+export interface ProviderAdapter {
+  id: ProviderId;
+  label: string;
+  /** آیا برای کار کردن کلید لازم است */
+  requiresApiKey: boolean;
+  defaultBaseUrl: string;
+  defaultModel: string;
+  /** نام متغیرهای محیطی پشتیبان */
+  envBaseUrl?: string;
+  envApiKey?: string;
+  /** راهنمای کوتاه نمایش در صفحهٔ تنظیمات */
+  help: string;
+
+  /** تبدیل تنظیمات کاربر + env به پیکربندی قطعی */
+  resolve(input: ProviderInput): ResolvedProviderConfig;
+  /** فهرست مدل‌های واقعاً موجود — در صورت عدم دسترسی باید خطا بدهد نه لیست ساختگی */
+  listModels(cfg: ResolvedProviderConfig): Promise<string[]>;
+  /** جزئیات غنی مدل‌ها (اختیاری — مثلاً خانواده/پارامتر/قیمت) */
+  describeModels?(cfg: ResolvedProviderConfig): Promise<unknown[]>;
+  /** تست کامل: دسترسی‌پذیری، احراز هویت، مدل، تولید واقعی */
+  check(cfg: ResolvedProviderConfig): Promise<ProviderCheck[]>;
+  /** یک تولید متنی کوچک و واقعی (برای تست و تشخیص) */
+  complete(
+    cfg: ResolvedProviderConfig,
+    messages: ProviderMessage[],
+    opts?: { maxTokens?: number; temperature?: number; timeoutMs?: number }
+  ): Promise<CompletionResult>;
+  /** استریم پاسخ (پیش‌فرض از complete ساخته می‌شود) */
+  stream(
+    cfg: ResolvedProviderConfig,
+    messages: ProviderMessage[],
+    opts?: { maxTokens?: number; temperature?: number; timeoutMs?: number }
+  ): AsyncGenerator<string>;
+}
+
+export interface ProviderInput {
+  provider: ProviderId;
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+  /** تنظیمات کامل برنامه برای خواندن مقادیر پیش‌فرض جایگزین */
+  defaults?: { baseUrl?: string; model?: string };
+}
+
+export const OK_LABEL = "✅";
+export const FAIL_LABEL = "❌";
+export const NOT_TESTED_LABEL = "➖";
+
+/* ===== merged from providers/http.ts ===== */
 /**
  * ابزارهای HTTP مشترک لایهٔ ارائه‌دهنده‌ها
  *
@@ -8,7 +117,6 @@
  *  - تبدیل خطاهای شبکه به پیام‌های قابل‌فهم فارسی (اتصال رد شد، DNS، تایم‌اوت…)
  *  - هرگز لو ندادن کلید API در متن خطا
  */
-import { describeError, logger, redact } from "@/lib/logger";
 
 export const DEFAULT_TIMEOUT_MS = 60_000;
 export const PROBE_TIMEOUT_MS = 15_000;
@@ -359,276 +467,10 @@ export function reportProviderError(
   const d = describeError(err);
   logger.error(event, { ...context, ...d, hint: net.hint });
   return { message: d.message, hint: net.hint };
-}/**
- * رجیستری ارائه‌دهنده‌ها — تنها نقطهٔ تماس برنامه با لایهٔ LLM
- *
- * استفاده:
- *   import { getAdapter, resolveConfig, streamCompletion } from "@/lib/providers";
- */
-import type { AppSettings, ProviderId } from "@/lib/types";
-import type {
-  CompletionResult,
-  ProviderAdapter,
-  ProviderMessage,
-  ResolvedProviderConfig
-} from "@/lib/providers/types";
-import { ollamaAdapter } from "@/lib/providers/ollama";
-import { isBuiltInModelId } from "@/lib/builtin-models";
-import { openrouterAdapter } from "@/lib/providers/openrouter";
-import { pollinationsAdapter } from "@/lib/providers/pollinations";
-import { createOpenAICompatibleAdapter } from "@/lib/providers/openaiCompatible";
-import { logger } from "@/lib/logger";
+}
 
-/* ---------------- آداپتورهای سازگار با OpenAI ---------------- */
-
-const openaiAdapter = createOpenAICompatibleAdapter({
-  id: "openai",
-  label: "OpenAI",
-  requiresApiKey: true,
-  defaultBaseUrl: "https://api.openai.com/v1",
-  defaultModel: "gpt-4o-mini",
-  envBaseUrl: "OPENAI_BASE_URL",
-  envApiKey: "OPENAI_API_KEY",
-  help: "کلید را از https://platform.openai.com/api-keys بگیرید (متغیر محیطی OPENAI_API_KEY)."
-});
-
-const groqAdapter = createOpenAICompatibleAdapter({
-  id: "groq",
-  label: "Groq",
-  requiresApiKey: true,
-  defaultBaseUrl: "https://api.groq.com/openai/v1",
-  defaultModel: "llama-3.3-70b-versatile",
-  envBaseUrl: "GROQ_BASE_URL",
-  envApiKey: "GROQ_API_KEY",
-  help: "کلید رایگان Groq از https://console.groq.com/keys (متغیر محیطی GROQ_API_KEY)."
-});
-
-const xaiAdapter = createOpenAICompatibleAdapter({
-  id: "xai",
-  label: "xAI (Grok)",
-  requiresApiKey: true,
-  defaultBaseUrl: "https://api.x.ai/v1",
-  defaultModel: "grok-2-mini",
-  envBaseUrl: "XAI_BASE_URL",
-  envApiKey: "XAI_API_KEY",
-  help: "کلید xAI از https://console.x.ai (متغیر محیطی XAI_API_KEY)."
-});
-
-const lmstudioAdapter = createOpenAICompatibleAdapter({
-  id: "lmstudio",
-  label: "LM Studio (محلی)",
-  requiresApiKey: false,
-  defaultBaseUrl: "http://127.0.0.1:1234/v1",
-  defaultModel: "local-model",
-  envBaseUrl: "LMSTUDIO_BASE_URL",
-  help: "در LM Studio سرور محلی را روشن کنید (Developer → Start Server). پورت پیش‌فرض 1234."
-});
-
-const customAdapter = createOpenAICompatibleAdapter({
-  id: "custom",
-  label: "سفارشی (OpenAI-Compatible)",
-  requiresApiKey: false,
-  defaultBaseUrl: "",
-  defaultModel: "",
-  help: "هر سرویسی که مسیر {baseUrl}/chat/completions دارد."
-});
-
+/* ===== merged from providers/ollama.ts ===== */
 /**
- * 9Router — پروکسی محلی OpenAI-Compatible
- * منبع: مخزن رسمی decolua/9router و بستهٔ npm «9router».
- * آدرس پیش‌فرض مستندشده: http://localhost:20128/v1  (پروکسی محلی)
- * فقط از مسیرهای مستندشده استفاده می‌کنیم: /v1/models و /v1/chat/completions
- */
-const nineRouterAdapter = createOpenAICompatibleAdapter({
-  id: "9router",
-  label: "9Router (پروکسی محلی)",
-  requiresApiKey: false,
-  defaultBaseUrl: "http://127.0.0.1:20128/v1",
-  defaultModel: "",
-  envBaseUrl: "NINE_ROUTTER_BASE_URL",
-  envApiKey: "NINE_ROUTTER_API_KEY",
-  help:
-    "9Router یک پروکسی محلی OpenAI-Compatible است (npm i -g 9router و اجرای 9router). آدرس پیش‌فرض مستندشده http://localhost:20128/v1 — ابتدا با «تست اتصال» مطمئن شوید 9Router روی همان پورت بالا آمده، سپس مدل را از «GET /v1/models» انتخاب کنید."
-});
-
-/* ---------------- رجیستری ---------------- */
-
-const REGISTRY: Record<ProviderId, ProviderAdapter> = {
-  builtin: pollinationsAdapter,
-  ollama: ollamaAdapter,
-  openrouter: openrouterAdapter,
-  openai: openaiAdapter,
-  groq: groqAdapter,
-  xai: xaiAdapter,
-  lmstudio: lmstudioAdapter,
-  custom: customAdapter,
-  "9router": nineRouterAdapter
-};
-
-export const PROVIDER_IDS = Object.keys(REGISTRY) as ProviderId[];
-
-export function isProviderId(value: unknown): value is ProviderId {
-  return typeof value === "string" && value in REGISTRY;
-}
-
-export function getAdapter(provider: ProviderId): ProviderAdapter {
-  const adapter = REGISTRY[provider];
-  if (!adapter) {
-    logger.warn("provider.unknown", { provider });
-    return pollinationsAdapter;
-  }
-  return adapter;
-}
-
-/** آدرس پایهٔ پیش‌فرض هر ارائه‌دهنده (برای UI و تست) */
-export const PROVIDER_BASE_URLS: Record<ProviderId, string> = Object.fromEntries(
-  PROVIDER_IDS.map((id) => [id, REGISTRY[id].defaultBaseUrl])
-) as Record<ProviderId, string>;
-
-/** فهرست کامل آداپتورها — برای صفحهٔ تشخیص */
-export function allAdapters(): ProviderAdapter[] {
-  return PROVIDER_IDS.map((id) => REGISTRY[id]);
-}
-
-/** نرمال‌سازی آدرس برای مقایسه (localhost و 127.0.0.1 یکی حساب می‌شوند) */
-function normalizeForCompare(url: string): string {
-  return url
-    .trim()
-    .toLowerCase()
-    .replace(/\/+$/, "")
-    .replace(/\/v1$/, "")
-    .replace(/^http:\/\/localhost(?=[:/]|$)/, "http://127.0.0.1");
-}
-
-/**
- * آیا این آدرس ذخیره‌شده متعلق به ارائه‌دهندهٔ دیگری است؟
- * مثال کاربر: در تنظیمات قبلاً Pollinations بوده، حالا Ollama را انتخاب کرده
- * ولی آدرس قبلی در تنظیمات مانده — بدون این بررسی، Peak به آدرس اشتباه می‌رود.
- */
-function baseUrlBelongsToAnotherProvider(url: string, provider: ProviderId): boolean {
-  const target = normalizeForCompare(url);
-  if (!target) return false;
-  let mine = false;
-  for (const [id, adapter] of Object.entries(REGISTRY) as Array<[ProviderId, ProviderAdapter]>) {
-    const def = normalizeForCompare(adapter.defaultBaseUrl);
-    if (!def) continue;
-    if (target === def) {
-      if (id === provider) mine = true;
-      else return true;
-    }
-  }
-  return !mine && target !== "" && [...Object.values(REGISTRY)].some(
-    (a) => normalizeForCompare(a.defaultBaseUrl) === target
-  );
-}
-
-/** آیا این نام مدل متعلق به ارائه‌دهنده/مدل داخلی دیگری است؟ */
-function modelBelongsToAnotherProvider(model: string, provider: ProviderId): boolean {
-  const m = model.trim().toLowerCase();
-  if (!m) return false;
-  if (provider === "builtin") return false;
-  if (isBuiltInModelId(m)) return true;
-  for (const [id, adapter] of Object.entries(REGISTRY) as Array<[ProviderId, ProviderAdapter]>) {
-    const def = adapter.defaultModel.trim().toLowerCase();
-    if (def && m === def && id !== provider && id !== "builtin") return true;
-  }
-  return false;
-}
-
-/** تبدیل تنظیمات برنامه به پیکربندی قطعی ارائه‌دهنده */
-export function resolveConfig(
-  settings: Pick<AppSettings, "provider" | "baseUrl" | "model" | "apiKey">
-): ResolvedProviderConfig {
-  const adapter = getAdapter(settings.provider);
-
-  // آدرس و مدلی که به ارائه‌دهندهٔ دیگری تعلق دارند نادیده گرفته می‌شوند
-  const baseUrl =
-    baseUrlBelongsToAnotherProvider(settings.baseUrl ?? "", settings.provider)
-      ? ""
-      : settings.baseUrl;
-  const model = modelBelongsToAnotherProvider(
-    settings.model ?? "",
-    settings.provider
-  )
-    ? ""
-    : settings.model;
-
-  if (baseUrl !== settings.baseUrl || model !== settings.model) {
-    logger.info("provider.foreign_settings_ignored", {
-      provider: settings.provider,
-      ignoredBaseUrl: settings.baseUrl,
-      ignoredModel: settings.model
-    });
-  }
-
-  const cfg = adapter.resolve({
-    provider: settings.provider,
-    baseUrl,
-    model,
-    apiKey: settings.apiKey
-  });
-  logger.debug("provider.resolved", {
-    provider: cfg.provider,
-    baseUrl: cfg.baseUrl,
-    model: cfg.model,
-    apiKeySource: cfg.sources.apiKey,
-    baseUrlSource: cfg.sources.baseUrl
-  });
-  return cfg;
-}
-
-/** استریم پاسخ مدل از ارائه‌دهندهٔ تنظیم‌شده */
-export async function* streamCompletion(
-  cfg: ResolvedProviderConfig,
-  messages: ProviderMessage[],
-  opts?: { maxTokens?: number; temperature?: number }
-): AsyncGenerator<string> {
-  yield* getAdapter(cfg.provider).stream(cfg, messages, opts);
-}
-
-/** تولید یک‌بارهٔ متن (برای تست‌ها و تشخیص) */
-export function completeOnce(
-  cfg: ResolvedProviderConfig,
-  messages: ProviderMessage[],
-  opts?: { maxTokens?: number; temperature?: number; timeoutMs?: number }
-): Promise<CompletionResult> {
-  return getAdapter(cfg.provider).complete(cfg, messages, opts);
-}
-
-/** فهرست مدل‌های واقعی ارائه‌دهنده */
-export function listProviderModels(cfg: ResolvedProviderConfig): Promise<string[]> {
-  return getAdapter(cfg.provider).listModels(cfg);
-}
-
-/** آیا پیکربندی برای ارسال درخواست کافی است؟ (بررسی محلی و بدون شبکه) */
-export function configLooksComplete(cfg: ResolvedProviderConfig): {
-  ok: boolean;
-  problems: string[];
-} {
-  const adapter = getAdapter(cfg.provider);
-  const problems: string[] = [];
-  if (!cfg.baseUrl) problems.push("آدرس پایه (Base URL) خالی است.");
-  else if (!/^https?:\/\//i.test(cfg.baseUrl)) problems.push("آدرس پایه باید با http:// یا https:// شروع شود.");
-  if (!cfg.model) problems.push("نام مدل خالی است.");
-  if (adapter.requiresApiKey && !cfg.apiKey) {
-    problems.push("این ارائه‌دهنده به کلید API نیاز دارد.");
-  }
-  return { ok: problems.length === 0, problems };
-}
-
-export * from "@/lib/providers/types";
-export { ollamaAdapter, sameModelName } from "@/lib/providers/ollama";
-export { openrouterAdapter, OPENROUTER_BASE_URL } from "@/lib/providers/openrouter";
-export {
-  pollinationsAdapter,
-  backendModelFor,
-  BUILT_IN_API_URL
-} from "@/lib/providers/pollinations";
-export {
-  describeNetworkError,
-  errorCode,
-  httpErrorHint
-} from "@/lib/providers/http";/**
  * آداپتور Ollama — بر پایهٔ API بومی Ollama
  *
  * مستندات رسمی: https://github.com/ollama/ollama/blob/main/docs/api.md
@@ -640,23 +482,6 @@ export {
  *    هم می‌دهند؛ این آداپتور اول بومی را امتحان می‌کند و در صورت نبود،
  *    به مسیر سازگار با OpenAI سقوط می‌کند.
  */
-import {
-  fetchWithTimeout,
-  httpErrorHint,
-  joinUrl,
-  normalizeBase,
-  readBody,
-  readJson,
-  readSseText,
-  reportProviderError,
-  stripV1,
-  PROBE_TIMEOUT_MS
-} from "@/lib/providers/http";
-import type {
-  CompletionResult,
-  ProviderAdapter,
-  ProviderCheck,
-} from "@/lib/providers/types";
 
 export const OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434";
 
@@ -674,9 +499,6 @@ export interface OllamaModelInfo {
   sizeGB?: number;
 }
 
-function envStr(name: string): string {
-  return (process.env[name] ?? "").trim();
-}
 
 /** OLLAMA_HOST می‌تواند «127.0.0.1:11434» یا «http://host:port» باشد */
 function baseUrlFromEnv(): string {
@@ -973,32 +795,15 @@ export const ollamaAdapter: ProviderAdapter = {
 export function sameModelName(a: string, b: string): boolean {
   const norm = (s: string) => s.trim().toLowerCase().replace(/:latest$/, "");
   return norm(a) === norm(b);
-}/**
+}
+
+/* ===== merged from providers/openaiCompatible.ts ===== */
+/**
  * آداپتور عمومی OpenAI-Compatible
  *
  * برای: OpenAI، Groq، xAI، LM Studio، 9Router و هر سرویس سفارشی دیگر.
  * قرارداد: POST {baseUrl}/chat/completions با هدر Authorization: Bearer <key>
  */
-import {
-  fetchWithTimeout,
-  httpErrorHint,
-  joinUrl,
-  normalizeBase,
-  readBody,
-  readJson,
-  readSseText,
-  reportProviderError,
-  PROBE_TIMEOUT_MS,
-  DEFAULT_TIMEOUT_MS
-} from "@/lib/providers/http";
-import type {
-  ProviderAdapter,
-  ProviderCheck,
-  ProviderInput,
-  ProviderMessage,
-  ResolvedProviderConfig
-} from "@/lib/providers/types";
-import type { ProviderId } from "@/lib/types";
 
 /** ماسک کردن کلید (برای نمایش در نتیجهٔ تست — هرگز کل کلید نشت نمی‌کند) */
 function maskApiKey(key: string): string {
@@ -1359,7 +1164,10 @@ export function modelEnvName(id: ProviderId): string | undefined {
     default:
       return undefined;
   }
-}/**
+}
+
+/* ===== merged from providers/openrouter.ts ===== */
+/**
  * آداپتور OpenRouter — بر اساس مستندات رسمی
  *   https://openrouter.ai/docs/api-reference/overview
  *
@@ -1371,23 +1179,9 @@ export function modelEnvName(id: ProviderId): string | undefined {
  *  - خطاها: 401 کلید نامعتبر، 402 کریdit ناکافی، 403 بودجه، 429 محدودیت نرخ
  *  - مدل‌های رایگان با پسوند «:free» مشخص می‌شوند
  */
-import {
-  fetchWithTimeout,
-  httpErrorHint,
-  joinUrl,
-  readBody,
-  readJson,
-  reportProviderError,
-  PROBE_TIMEOUT_MS
-} from "@/lib/providers/http";
-import type { ProviderCheck, ResolvedProviderConfig } from "@/lib/providers/types";
-import { createOpenAICompatibleAdapter } from "@/lib/providers/openaiCompatible";
 
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-function envStr(name: string): string {
-  return (process.env[name] ?? "").trim();
-}
 
 interface OpenRouterModel {
   id: string;
@@ -1551,28 +1345,16 @@ function authHeaders(cfg: ResolvedProviderConfig): Record<string, string> {
   if (referer) headers["HTTP-Referer"] = referer;
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   return headers;
-}/**
+}
+
+/* ===== merged from providers/pollinations.ts ===== */
+/**
  * آداپتور سرویس داخلی رایگان (Pollinations)
  *
  * این سرویس بدون کلید کار می‌کند و پشتیبان پیش‌فرض برنامه است.
  * اگر در دسترس نبود (اینترنت قطع، سرویس خوابیده، …) باید خطای گویا بدهد تا
  * برنامه به مغز آفلاین سقوط کند — نه اینکه وانمود کند جواب داده است.
  */
-import {
-  fetchWithTimeout,
-  httpErrorHint,
-  normalizeBase,
-  readBody,
-  readSseText,
-  reportProviderError,
-  PROBE_TIMEOUT_MS
-} from "@/lib/providers/http";
-import type {
-  CompletionResult,
-  ProviderAdapter,
-  ProviderCheck,
-  ProviderMessage,
-} from "@/lib/providers/types";
 
 export const BUILT_IN_API_URL = "https://text.pollinations.ai/";
 
@@ -1728,106 +1510,251 @@ function extractJsonText(raw: string): string {
 /** نگاشت شناسهٔ مدل داخلی به مدل بومی سرویس (برای سازگاری با کد قبلی) */
 export function backendModelFor(id: string): string {
   return BACKEND_MODELS[id] ?? id;
-}/**
- * قرارداد لایهٔ ارائه‌دهنده‌ها (Provider Layer)
+}
+
+/* ===== merged from providers/index.ts ===== */
+/**
+ * رجیستری ارائه‌دهنده‌ها — تنها نقطهٔ تماس برنامه با لایهٔ LLM
  *
- * هر ارائه‌دهنده یک آداپتور است با سه توانایی اصلی:
- *   resolve()  → تبدیل تنظیمات کاربر + متغیرهای محیطی به یک پیکربندی قطعی
- *   listModels()→ فهرست مدل‌های واقعاً موجود (نه حدسی)
- *   check()    → تست واقعی: دسترسی‌پذیری + احراز هویت + وجود مدل + یک تولید کوتاه
- *
- * قرارداد صادقانه: اگر تستی انجام نشده، status باید NOT_TESTED باشد — نه PASS.
+ * استفاده:
+ *   import { getAdapter, resolveConfig, streamCompletion } from "@/lib/providers";
  */
-import type { ProviderId } from "@/lib/types";
 
-export type CheckStatus = "PASS" | "FAIL" | "NOT_TESTED" | "SKIPPED";
+/* ---------------- آداپتورهای سازگار با OpenAI ---------------- */
 
-export interface ProviderCheck {
-  /** شناسهٔ ماشین‌خوان مرحله (مثلاً reachability / auth / model / generation) */
-  id: string;
-  /** عنوان فارسی برای نمایش */
-  label: string;
-  status: CheckStatus;
-  detail: string;
-  /** راه‌حل عملی برای کاربر */
-  hint?: string;
-  /** دادهٔ کمکی (مثلاً فهرست مدل‌های نصب‌شده) */
-  data?: Record<string, unknown>;
-  /** مدت زمان تست به میلی‌ثانیه */
-  latencyMs?: number;
+const openaiAdapter = createOpenAICompatibleAdapter({
+  id: "openai",
+  label: "OpenAI",
+  requiresApiKey: true,
+  defaultBaseUrl: "https://api.openai.com/v1",
+  defaultModel: "gpt-4o-mini",
+  envBaseUrl: "OPENAI_BASE_URL",
+  envApiKey: "OPENAI_API_KEY",
+  help: "کلید را از https://platform.openai.com/api-keys بگیرید (متغیر محیطی OPENAI_API_KEY)."
+});
+
+const groqAdapter = createOpenAICompatibleAdapter({
+  id: "groq",
+  label: "Groq",
+  requiresApiKey: true,
+  defaultBaseUrl: "https://api.groq.com/openai/v1",
+  defaultModel: "llama-3.3-70b-versatile",
+  envBaseUrl: "GROQ_BASE_URL",
+  envApiKey: "GROQ_API_KEY",
+  help: "کلید رایگان Groq از https://console.groq.com/keys (متغیر محیطی GROQ_API_KEY)."
+});
+
+const xaiAdapter = createOpenAICompatibleAdapter({
+  id: "xai",
+  label: "xAI (Grok)",
+  requiresApiKey: true,
+  defaultBaseUrl: "https://api.x.ai/v1",
+  defaultModel: "grok-2-mini",
+  envBaseUrl: "XAI_BASE_URL",
+  envApiKey: "XAI_API_KEY",
+  help: "کلید xAI از https://console.x.ai (متغیر محیطی XAI_API_KEY)."
+});
+
+const lmstudioAdapter = createOpenAICompatibleAdapter({
+  id: "lmstudio",
+  label: "LM Studio (محلی)",
+  requiresApiKey: false,
+  defaultBaseUrl: "http://127.0.0.1:1234/v1",
+  defaultModel: "local-model",
+  envBaseUrl: "LMSTUDIO_BASE_URL",
+  help: "در LM Studio سرور محلی را روشن کنید (Developer → Start Server). پورت پیش‌فرض 1234."
+});
+
+const customAdapter = createOpenAICompatibleAdapter({
+  id: "custom",
+  label: "سفارشی (OpenAI-Compatible)",
+  requiresApiKey: false,
+  defaultBaseUrl: "",
+  defaultModel: "",
+  help: "هر سرویسی که مسیر {baseUrl}/chat/completions دارد."
+});
+
+/**
+ * 9Router — پروکسی محلی OpenAI-Compatible
+ * منبع: مخزن رسمی decolua/9router و بستهٔ npm «9router».
+ * آدرس پیش‌فرض مستندشده: http://localhost:20128/v1  (پروکسی محلی)
+ * فقط از مسیرهای مستندشده استفاده می‌کنیم: /v1/models و /v1/chat/completions
+ */
+const nineRouterAdapter = createOpenAICompatibleAdapter({
+  id: "9router",
+  label: "9Router (پروکسی محلی)",
+  requiresApiKey: false,
+  defaultBaseUrl: "http://127.0.0.1:20128/v1",
+  defaultModel: "",
+  envBaseUrl: "NINE_ROUTTER_BASE_URL",
+  envApiKey: "NINE_ROUTTER_API_KEY",
+  help:
+    "9Router یک پروکسی محلی OpenAI-Compatible است (npm i -g 9router و اجرای 9router). آدرس پیش‌فرض مستندشده http://localhost:20128/v1 — ابتدا با «تست اتصال» مطمئن شوید 9Router روی همان پورت بالا آمده، سپس مدل را از «GET /v1/models» انتخاب کنید."
+});
+
+/* ---------------- رجیستری ---------------- */
+
+const REGISTRY: Record<ProviderId, ProviderAdapter> = {
+  builtin: pollinationsAdapter,
+  ollama: ollamaAdapter,
+  openrouter: openrouterAdapter,
+  openai: openaiAdapter,
+  groq: groqAdapter,
+  xai: xaiAdapter,
+  lmstudio: lmstudioAdapter,
+  custom: customAdapter,
+  "9router": nineRouterAdapter
+};
+
+export const PROVIDER_IDS = Object.keys(REGISTRY) as ProviderId[];
+
+export function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === "string" && value in REGISTRY;
 }
 
-export interface ProviderMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+export function getAdapter(provider: ProviderId): ProviderAdapter {
+  const adapter = REGISTRY[provider];
+  if (!adapter) {
+    logger.warn("provider.unknown", { provider });
+    return pollinationsAdapter;
+  }
+  return adapter;
 }
 
-/** پیکربندی نهایی و قطعی ارائه‌دهنده (بدون راز در خروجی لاگ) */
-export interface ResolvedProviderConfig {
-  provider: ProviderId;
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-  /** هدرهای اضافهٔ لازم (مثلاً HTTP-Referer در OpenRouter) */
-  headers: Record<string, string>;
-  /** منبع هر مقدار: settings | env | default */
-  sources: {
-    baseUrl: "settings" | "env" | "default";
-    model: "settings" | "env" | "default";
-    apiKey: "settings" | "env" | "none";
-  };
+/** آدرس پایهٔ پیش‌فرض هر ارائه‌دهنده (برای UI و تست) */
+export const PROVIDER_BASE_URLS: Record<ProviderId, string> = Object.fromEntries(
+  PROVIDER_IDS.map((id) => [id, REGISTRY[id].defaultBaseUrl])
+) as Record<ProviderId, string>;
+
+/** فهرست کامل آداپتورها — برای صفحهٔ تشخیص */
+export function allAdapters(): ProviderAdapter[] {
+  return PROVIDER_IDS.map((id) => REGISTRY[id]);
 }
 
-export interface CompletionResult {
-  text: string;
-  model: string;
-  latencyMs: number;
+/** نرمال‌سازی آدرس برای مقایسه (localhost و 127.0.0.1 یکی حساب می‌شوند) */
+function normalizeForCompare(url: string): string {
+  return url
+    .trim()
+    .toLowerCase()
+    .replace(/\/+$/, "")
+    .replace(/\/v1$/, "")
+    .replace(/^http:\/\/localhost(?=[:/]|$)/, "http://127.0.0.1");
 }
 
-export interface ProviderAdapter {
-  id: ProviderId;
-  label: string;
-  /** آیا برای کار کردن کلید لازم است */
-  requiresApiKey: boolean;
-  defaultBaseUrl: string;
-  defaultModel: string;
-  /** نام متغیرهای محیطی پشتیبان */
-  envBaseUrl?: string;
-  envApiKey?: string;
-  /** راهنمای کوتاه نمایش در صفحهٔ تنظیمات */
-  help: string;
-
-  /** تبدیل تنظیمات کاربر + env به پیکربندی قطعی */
-  resolve(input: ProviderInput): ResolvedProviderConfig;
-  /** فهرست مدل‌های واقعاً موجود — در صورت عدم دسترسی باید خطا بدهد نه لیست ساختگی */
-  listModels(cfg: ResolvedProviderConfig): Promise<string[]>;
-  /** جزئیات غنی مدل‌ها (اختیاری — مثلاً خانواده/پارامتر/قیمت) */
-  describeModels?(cfg: ResolvedProviderConfig): Promise<unknown[]>;
-  /** تست کامل: دسترسی‌پذیری، احراز هویت، مدل، تولید واقعی */
-  check(cfg: ResolvedProviderConfig): Promise<ProviderCheck[]>;
-  /** یک تولید متنی کوچک و واقعی (برای تست و تشخیص) */
-  complete(
-    cfg: ResolvedProviderConfig,
-    messages: ProviderMessage[],
-    opts?: { maxTokens?: number; temperature?: number; timeoutMs?: number }
-  ): Promise<CompletionResult>;
-  /** استریم پاسخ (پیش‌فرض از complete ساخته می‌شود) */
-  stream(
-    cfg: ResolvedProviderConfig,
-    messages: ProviderMessage[],
-    opts?: { maxTokens?: number; temperature?: number; timeoutMs?: number }
-  ): AsyncGenerator<string>;
+/**
+ * آیا این آدرس ذخیره‌شده متعلق به ارائه‌دهندهٔ دیگری است؟
+ * مثال کاربر: در تنظیمات قبلاً Pollinations بوده، حالا Ollama را انتخاب کرده
+ * ولی آدرس قبلی در تنظیمات مانده — بدون این بررسی، Peak به آدرس اشتباه می‌رود.
+ */
+function baseUrlBelongsToAnotherProvider(url: string, provider: ProviderId): boolean {
+  const target = normalizeForCompare(url);
+  if (!target) return false;
+  let mine = false;
+  for (const [id, adapter] of Object.entries(REGISTRY) as Array<[ProviderId, ProviderAdapter]>) {
+    const def = normalizeForCompare(adapter.defaultBaseUrl);
+    if (!def) continue;
+    if (target === def) {
+      if (id === provider) mine = true;
+      else return true;
+    }
+  }
+  return !mine && target !== "" && [...Object.values(REGISTRY)].some(
+    (a) => normalizeForCompare(a.defaultBaseUrl) === target
+  );
 }
 
-export interface ProviderInput {
-  provider: ProviderId;
-  baseUrl?: string;
-  model?: string;
-  apiKey?: string;
-  /** تنظیمات کامل برنامه برای خواندن مقادیر پیش‌فرض جایگزین */
-  defaults?: { baseUrl?: string; model?: string };
+/** آیا این نام مدل متعلق به ارائه‌دهنده/مدل داخلی دیگری است؟ */
+function modelBelongsToAnotherProvider(model: string, provider: ProviderId): boolean {
+  const m = model.trim().toLowerCase();
+  if (!m) return false;
+  if (provider === "builtin") return false;
+  if (isBuiltInModelId(m)) return true;
+  for (const [id, adapter] of Object.entries(REGISTRY) as Array<[ProviderId, ProviderAdapter]>) {
+    const def = adapter.defaultModel.trim().toLowerCase();
+    if (def && m === def && id !== provider && id !== "builtin") return true;
+  }
+  return false;
 }
 
-export const OK_LABEL = "✅";
-export const FAIL_LABEL = "❌";
-export const NOT_TESTED_LABEL = "➖";
+/** تبدیل تنظیمات برنامه به پیکربندی قطعی ارائه‌دهنده */
+export function resolveConfig(
+  settings: Pick<AppSettings, "provider" | "baseUrl" | "model" | "apiKey">
+): ResolvedProviderConfig {
+  const adapter = getAdapter(settings.provider);
+
+  // آدرس و مدلی که به ارائه‌دهندهٔ دیگری تعلق دارند نادیده گرفته می‌شوند
+  const baseUrl =
+    baseUrlBelongsToAnotherProvider(settings.baseUrl ?? "", settings.provider)
+      ? ""
+      : settings.baseUrl;
+  const model = modelBelongsToAnotherProvider(
+    settings.model ?? "",
+    settings.provider
+  )
+    ? ""
+    : settings.model;
+
+  if (baseUrl !== settings.baseUrl || model !== settings.model) {
+    logger.info("provider.foreign_settings_ignored", {
+      provider: settings.provider,
+      ignoredBaseUrl: settings.baseUrl,
+      ignoredModel: settings.model
+    });
+  }
+
+  const cfg = adapter.resolve({
+    provider: settings.provider,
+    baseUrl,
+    model,
+    apiKey: settings.apiKey
+  });
+  logger.debug("provider.resolved", {
+    provider: cfg.provider,
+    baseUrl: cfg.baseUrl,
+    model: cfg.model,
+    apiKeySource: cfg.sources.apiKey,
+    baseUrlSource: cfg.sources.baseUrl
+  });
+  return cfg;
+}
+
+/** استریم پاسخ مدل از ارائه‌دهندهٔ تنظیم‌شده */
+export async function* streamCompletion(
+  cfg: ResolvedProviderConfig,
+  messages: ProviderMessage[],
+  opts?: { maxTokens?: number; temperature?: number }
+): AsyncGenerator<string> {
+  yield* getAdapter(cfg.provider).stream(cfg, messages, opts);
+}
+
+/** تولید یک‌بارهٔ متن (برای تست‌ها و تشخیص) */
+export function completeOnce(
+  cfg: ResolvedProviderConfig,
+  messages: ProviderMessage[],
+  opts?: { maxTokens?: number; temperature?: number; timeoutMs?: number }
+): Promise<CompletionResult> {
+  return getAdapter(cfg.provider).complete(cfg, messages, opts);
+}
+
+/** فهرست مدل‌های واقعی ارائه‌دهنده */
+export function listProviderModels(cfg: ResolvedProviderConfig): Promise<string[]> {
+  return getAdapter(cfg.provider).listModels(cfg);
+}
+
+/** آیا پیکربندی برای ارسال درخواست کافی است؟ (بررسی محلی و بدون شبکه) */
+export function configLooksComplete(cfg: ResolvedProviderConfig): {
+  ok: boolean;
+  problems: string[];
+} {
+  const adapter = getAdapter(cfg.provider);
+  const problems: string[] = [];
+  if (!cfg.baseUrl) problems.push("آدرس پایه (Base URL) خالی است.");
+  else if (!/^https?:\/\//i.test(cfg.baseUrl)) problems.push("آدرس پایه باید با http:// یا https:// شروع شود.");
+  if (!cfg.model) problems.push("نام مدل خالی است.");
+  if (adapter.requiresApiKey && !cfg.apiKey) {
+    problems.push("این ارائه‌دهنده به کلید API نیاز دارد.");
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+/* (1.0.3: re-export removed — symbols already exported in http section above) */

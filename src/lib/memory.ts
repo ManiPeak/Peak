@@ -10,7 +10,7 @@ import {
   listMemories
 } from "@/lib/store";
 import type { MemoryCategory, MemoryDTO } from "@/lib/types";
-import { cleanText, toEnglishDigits } from "@/lib/persian";
+import { cleanText, toEnglishDigits } from "@/lib/pure-utils";
 
 /* ------------------------------------------------------------------ */
 /* قانون ۴ — امنیت داده‌ها                                             */

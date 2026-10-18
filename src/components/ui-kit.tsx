@@ -1,104 +1,13 @@
-// Peak 1.0.3 — UI Kit (3→1)
 "use client";
-
-/**
- * کلید اضطراری خاموش کردن — دکمهٔ قرمز شناور + میان‌بر Ctrl+Shift+K
- * روی همهٔ صفحه‌ها هست؛ فشردن آن همه‌چیز را همان لحظه متوقف می‌کند:
- * صدا، میکروفون، استریم‌ها و ربات ماینکرفت.
- */
-import { useEffect, useState } from "react";
+// Peak 1.0.3 — UI kit (ui+PeakLogo+EmergencyStop -> 1)
+import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import { Zap } from "lucide-react";
 import { triggerEmergency } from "@/lib/client";
 
-export function EmergencyStop({ inline = false }: { inline?: boolean }) {
-  const [done, setDone] = useState(false);
-
-  const fire = async () => {
-    await triggerEmergency("all").catch(() => undefined);
-    setDone(true);
-    setTimeout(() => setDone(false), 1500);
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
-        e.preventDefault();
-        void fire();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-     
-  }, []);
-
-  if (inline) {
-    return (
-      <button
-        onClick={() => void fire()}
-        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition active:scale-95 ${
-          done
-            ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-            : "border-red-400/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
-        }`}
-        title="توقف اضطراری همه‌چیز (Ctrl+Shift+K)"
-      >
-        <Zap size={14} />
-        {done ? "✅ متوقف شد" : "اضطراری"}
-      </button>
-    );
-  }
-
-  return (
-    <button
-      onClick={() => void fire()}
-      className={`fixed bottom-24 left-4 z-50 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold shadow-glow-red transition active:scale-95 md:bottom-6 ${
-        done
-          ? "bg-gradient-to-b from-emerald-500 to-emerald-700 text-white"
-          : "bg-gradient-to-b from-red-500 to-red-700 text-white hover:brightness-110"
-      }`}
-      title="توقف اضطراری همه‌چیز (Ctrl+Shift+K)"
-    >
-      <Zap size={18} />
-      {done ? "✅ همه‌چیز متوقف شد" : "خاموش اضطراری"}
-    </button>
-  );
-}
-/**
- * لوگوی Peak — نشان کوه‌قله با کلاه‌برفی و خورشید
- */
-export function PeakLogo({
-  size = 24,
-  className = ""
-}: {
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-    >
-      {/* قلهٔ اصلی */}
-      <path d="M16 4.5L28.5 27.5H3.5L16 4.5Z" fill="currentColor" />
-      {/* کلاه‌برفی */}
-      <path d="M16 4.5L21.8 15H10.2L16 4.5Z" fill="#e2e8f0" />
-      {/* قلهٔ کوچک پشت */}
-      <path d="M23 27.5L27 19L31 27.5H23Z" fill="currentColor" opacity="0.55" />
-      {/* خورشید */}
-      <circle cx="24.2" cy="8.2" r="2.6" fill="#fbbf24" />
-    </svg>
-  );
-}
-"use client";
-
+/* ===== merged from components/ui.tsx ===== */
 /**
  * اجزای مشترک رابط کاربری — دکمه، فیلد، کارت و تیتر
  */
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 
 /** تیتر صفحه */
 export function PageTitle({
@@ -198,6 +107,99 @@ export function Toggle({
           style={checked ? { right: "2px" } : { right: "22px" }}
         />
       </span>
+    </button>
+  );
+}
+
+/* ===== merged from components/PeakLogo.tsx ===== */
+/**
+ * لوگوی Peak — نشان کوه‌قله با کلاه‌برفی و خورشید
+ */
+export function PeakLogo({
+  size = 24,
+  className = ""
+}: {
+  size?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* قلهٔ اصلی */}
+      <path d="M16 4.5L28.5 27.5H3.5L16 4.5Z" fill="currentColor" />
+      {/* کلاه‌برفی */}
+      <path d="M16 4.5L21.8 15H10.2L16 4.5Z" fill="#e2e8f0" />
+      {/* قلهٔ کوچک پشت */}
+      <path d="M23 27.5L27 19L31 27.5H23Z" fill="currentColor" opacity="0.55" />
+      {/* خورشید */}
+      <circle cx="24.2" cy="8.2" r="2.6" fill="#fbbf24" />
+    </svg>
+  );
+}
+
+/* ===== merged from components/EmergencyStop.tsx ===== */
+/**
+ * کلید اضطراری خاموش کردن — دکمهٔ قرمز شناور + میان‌بر Ctrl+Shift+K
+ * روی همهٔ صفحه‌ها هست؛ فشردن آن همه‌چیز را همان لحظه متوقف می‌کند:
+ * صدا، میکروفون، استریم‌ها و ربات ماینکرفت.
+ */
+
+export function EmergencyStop({ inline = false }: { inline?: boolean }) {
+  const [done, setDone] = useState(false);
+
+  const fire = async () => {
+    await triggerEmergency("all").catch(() => undefined);
+    setDone(true);
+    setTimeout(() => setDone(false), 1500);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === "K" || e.key === "k")) {
+        e.preventDefault();
+        void fire();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+     
+  }, []);
+
+  if (inline) {
+    return (
+      <button
+        onClick={() => void fire()}
+        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition active:scale-95 ${
+          done
+            ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+            : "border-red-400/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+        }`}
+        title="توقف اضطراری همه‌چیز (Ctrl+Shift+K)"
+      >
+        <Zap size={14} />
+        {done ? "✅ متوقف شد" : "اضطراری"}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => void fire()}
+      className={`fixed bottom-24 left-4 z-50 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold shadow-glow-red transition active:scale-95 md:bottom-6 ${
+        done
+          ? "bg-gradient-to-b from-emerald-500 to-emerald-700 text-white"
+          : "bg-gradient-to-b from-red-500 to-red-700 text-white hover:brightness-110"
+      }`}
+      title="توقف اضطراری همه‌چیز (Ctrl+Shift+K)"
+    >
+      <Zap size={18} />
+      {done ? "✅ همه‌چیز متوقف شد" : "خاموش اضطراری"}
     </button>
   );
 }

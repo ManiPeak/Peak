@@ -2,8 +2,8 @@
  * API تست و تشخیص هوش مصنوعی — «از کدوم هوش مصنوعی است؟»
  */
 import { NextRequest, NextResponse } from "next/server";
-import { AI_CATALOG } from "@/lib/aiCatalog";
-import { probeEndpoint, type AiProbeResult } from "@/lib/aiProbe";
+import { AI_CATALOG } from "@/lib/ai-core";
+import { probeEndpoint, type AiProbeResult } from "@/lib/ai-core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

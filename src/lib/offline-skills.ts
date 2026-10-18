@@ -6,7 +6,7 @@ import type { OfflineContext } from "@/lib/offline-brain";
 import {
   toEnglishDigits,
   toPersianDigits
-} from "@/lib/persian";
+} from "@/lib/pure-utils";
 
 /* ------------------------------------------------------------------ */
 /* ابزارهای پایه                                                       */
