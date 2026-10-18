@@ -54,13 +54,16 @@ export CXX_target="$CXX"
 [ -x "$CC" ] || die "کامپایلر NDK پیدا نشد: $CC"
 
 # --- nodejs-mobile-gyp به‌صورت محلی (بستهٔ npm، بدون نصب سراسری) ---
+# (v1.0.3 fix: npm pack alone shipped the package WITHOUT its dependencies
+#  -> "Cannot find module 'proc-log'". Must npm-install it instead.)
 GYP_CACHE="$ROOT/android/vendor/.cache/nodejs-mobile-gyp"
 mkdir -p "$GYP_CACHE"
-if [ ! -x "$GYP_CACHE/package/bin/node-gyp.js" ]; then
+if [ ! -f "$GYP_CACHE/node_modules/nodejs-mobile-gyp/bin/node-gyp.js" ]; then
   log "دریافت nodejs-mobile-gyp@0.4.0 از npm…"
-  (cd "$GYP_CACHE" && npm pack nodejs-mobile-gyp@0.4.0 >/dev/null && tar -xzf nodejs-mobile-gyp-0.4.0.tgz)
+  (cd "$GYP_CACHE" && (npm init -y >/dev/null 2>&1 || true) && npm install --no-audit --no-fund nodejs-mobile-gyp@0.4.0)
 fi
-GYP="$GYP_CACHE/package/bin/node-gyp.js"
+GYP="$GYP_CACHE/node_modules/nodejs-mobile-gyp/bin/node-gyp.js"
+[ -f "$GYP" ] || die "nodejs-mobile-gyp آماده نشد: $GYP"
 
 # --- ساخت better-sqlite3 ---
 log "کراس‌کامپایل better-sqlite3 برای $ABI (Node $TARGET_VERSION / ABI $NODE_MODULE_VERSION)…"
