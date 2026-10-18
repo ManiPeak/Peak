@@ -96,7 +96,10 @@ jobs:
           gradle assembleRelease --stacktrace 2>&1 | tee /tmp/peak-gradle.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
-            grep -iE "error:|FAILURE|Exception|Could not|failed" /tmp/peak-gradle.log | tail -8 | while IFS= read -r line; do echo "::error::gradle: $line"; done || true
+            {
+              grep -A16 -m1 "startup failed:" /tmp/peak-gradle.log || true
+              grep -iE "error:|FAILURE|Exception|Could not|failed" /tmp/peak-gradle.log | head -8 || true
+            } | while IFS= read -r line; do echo "::error::gradle: $line"; done || true
             exit "$code"
           fi
       - name: Name APK from package.json
