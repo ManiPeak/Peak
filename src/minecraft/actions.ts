@@ -11,10 +11,10 @@ import {
   findCapability,
   type Capability
 } from "@/minecraft/capabilities";
-import type { CommandResult } from "@/minecraft/types";
-import { AUTH_PASSWORD, isProtected, normalizeFinglish } from "@/minecraft/personality";
+import type { CommandResult } from "@/minecraft/core";
+import { AUTH_PASSWORD, isProtected, normalizeFinglish } from "@/minecraft/core";
 import { getSettings, saveSettings } from "@/lib/store";
-import { toEnglishDigits, toPersianDigits } from "@/lib/persian";
+import { toEnglishDigits, toPersianDigits } from "@/lib/pure-utils";
 
 /** نتیجهٔ اجرای یک توانایی */
 export interface ActionResult {
@@ -1992,7 +1992,7 @@ export async function tryFastAction(
 /* (تعریف در ماژول سبک lib/mcTokens تا کلاینت هم بدون mineflayer کار کند)  */
 /* ------------------------------------------------------------------ */
 
-import { MC_TOKEN_RE, extractMcTokens, stripMcTokens } from "@/lib/mcTokens";
+import { MC_TOKEN_RE, extractMcTokens, stripMcTokens } from "@/lib/pure-utils";
 
 export { MC_TOKEN_RE, extractMcTokens, stripMcTokens };
 

@@ -14,7 +14,7 @@ import {
   Volume2,
   XCircle
 } from "lucide-react";
-import { Btn, Card, Field, Label, PageTitle, Toggle } from "@/components/ui";
+import { Btn, Card, Field, Label, PageTitle, Toggle } from "@/components/ui-kit";
 import AiProbePanel from "@/components/AiProbePanel";
 import { apiGet, apiSend, listVoices, speak } from "@/lib/client";
 import type {

@@ -1,1 +1,9 @@
-export default { plugins: { tailwindcss: {}, autoprefixer: {} } };
+/** پیکربندی PostCSS برای Tailwind */
+const config = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {}
+  }
+};
+
+export default config;

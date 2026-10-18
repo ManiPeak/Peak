@@ -25,7 +25,7 @@ import {
   Swords,
   Volume2
 } from "lucide-react";
-import { PageTitle, Toggle } from "@/components/ui";
+import { PageTitle, Toggle } from "@/components/ui-kit";
 import { apiGet, apiSend } from "@/lib/client";
 import {
   FS_ACCESS_RULES,

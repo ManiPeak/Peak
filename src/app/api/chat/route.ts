@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { botManager } from "@/minecraft/botManager";
-import { getBuiltInModel } from "@/lib/builtin-models";
+import { getBuiltInModel } from "@/lib/ai-core";
 import { describeError, logger } from "@/lib/logger";
 import { getAdapter, resolveConfig } from "@/lib/providers";
 import {
@@ -18,7 +18,7 @@ import {
 } from "@/lib/memory";
 import { buildChatHistory, buildSystemPrompt, isMinecraftTopic } from "@/lib/prompt";
 import { isProviderReady, localFastReply, offlineReply } from "@/lib/offline-brain";
-import { extractThought, thoughtsFromHistory } from "@/lib/mind";
+import { extractThought, thoughtsFromHistory } from "@/lib/pure-utils";
 import type { ChatMessage } from "@/lib/llm";
 import {
   appendMessage,
@@ -280,7 +280,7 @@ async function handleChat(input: {
 
   /* ---------------- تست API هوش مصنوعی — فرمان صوتی/متنی ---------------- */
   {
-    const { fastProbeReply } = await import("@/lib/aiProbe");
+    const { fastProbeReply } = await import("@/lib/ai-core");
     const probeReply = await fastProbeReply(content, {
       baseUrl: settings.baseUrl,
       apiKey: settings.apiKey,

@@ -1,100 +1,12 @@
-# 📚 Peak Documentation — نسخهٔ ۱.۰.۳ (همه‌چیز در یک‌جا)
-> این فایل جایگزین ۵ فایل پراکندهٔ قبلی است برای کاهش به ۹۹ فایل.
-# Peak روی اندروید — اجرای کامل روی خود گوشی (بدون سرور و VPS)
+# Peak Documentation — v1.0.3 (consolidated)
 
-نسخهٔ اندروید **عین نسخهٔ PC** کار می‌کند: رانتایم Node.js داخل خود APK است، سرور
-Next.js و بات ماینکرفت و دیتابیس همگی **روی خود گوشی** اجرا می‌شوند و WebView
-به `http://127.0.0.1:3784` (درون همان دستگاه) وصل می‌شود. هیچ سرور، VPS یا
-«ریموت‌کنترلی» در کار نیست.
+> v1.0.3 consolidation: EXE-GUIDE + ANDROID + PROVIDERS + CAPABILITIES + MODS-GUIDE + MANIX merged into this single file (6 -> 1).
+> Screenshots (docs/images in v1.0.2), the full 13-file test suite, and .env.example template are preserved in the original Peak-1.0.2.zip (Google Drive) — see appendices below for env template.
 
-## معماری (عین electron/main.js)
 
-```
-┌─ Peak.apk ────────────────────────────────────────────────┐
-│  پوستهٔ Kotlin (MainActivity + NodeService)                │
-│    └─ پل JNI (node-jni.cpp) → node::Start                 │
-│         └─ libnode.so (nodejs-mobile 18.20.4 — arm64)      │
-│              └─ node node_modules/next/dist/bin/next start │
-│                   └─ سرور Next روی 127.0.0.1:3784          │
-│                        ├─ بات ماینکرفت + AI + SQLite       │
-│                        └─ WebView ← http://127.0.0.1:3784  │
-└────────────────────────────────────────────────────────────┘
-```
 
-- **رانتایم Node**: `libnode.so` از بستهٔ npm
-  [`nodejs-mobile-react-native@18.20.4`](https://www.npmjs.com/package/nodejs-mobile-react-native)
-  (Node 18.20.4 — MODULE_VERSION 108) به‌همراه هدرهای کامل — توسط
-  `scripts/prepare-android-assets.mjs` استخراج می‌شود. هیچ فایل باینری در Git نیست.
-- **نصب اپ روی گوشی**: assets (`.next` + `node_modules` پروداکشن + `package.json` +
-  `next.config.mjs` + `public`) در اولین اجرا به `filesDir/app` استخراج می‌شوند —
-  دقیقاً همان ساختار `resources/app` در ویندوز.
-- **داده‌ها**: دیتابیس SQLite مثل PC در پوشهٔ `data/` زیر filesDir برنامه می‌ماند.
-- **جلوگیری از خواب**: سرویس پیش‌زمینه + WakeLock تا بات هنگام قفل بودن صفحه زنده بماند.
-- **پالایش‌ها**: عین `scripts/build-exe.ps1` — حذف `minecraft-data/{bedrock,doc,tools}`،
-  `test/tests`، `*.md`/`README*`، و `@next/swc-*` و `@img/*` (بیلد-تایم / sharp).
-
-## ساخت APK
-
-### راه ۱ — GitHub Actions (توصیه‌شده)
-
-ورک‌فلوی `.github/workflows/build-android.yml` با هر push به main یا تگ `v*` یا
-اجرا دستی:
-
-1. `npm ci` + `npm run build` (بیلد Next)
-2. `node scripts/prepare-android-assets.mjs` (استخراج libnode + مونتاژ assets)
-3. `scripts/build-android-native.sh arm64-v8a` (کراس‌کامپایل `better-sqlite3` با NDK r26d)
-4. `gradle assembleRelease` (Gradle 8.7 + JDK 17 — بدون نیاز به Gradle wrapper در Git)
-5. آپلود artifact به‌نام `Peak-<version>.apk` (+ پیوست به Release در تگ‌ها)
-
-### راه ۲ — لوکال
-
-پیش‌نیاز: JDK 17، Android SDK + NDK r26+، Node 22، Gradle 8.7.
-
-```bash
-npm ci && npm run build
-node scripts/prepare-android-assets.mjs
-export ANDROID_NDK_HOME=~/Android/Sdk/ndk/26.3.11579264
-bash scripts/build-android-native.sh arm64-v8a
-cd android && gradle assembleRelease
-# خروجی: android/app/build/outputs/apk/release/app-release.apk
-```
-
-نسخهٔ APK به‌صورت خودکار از `package.json` خوانده می‌شود (الان 1.0.2).
-
-## نصب روی گوشی
-
-1. فایل `Peak-1.0.2.apk` را از بخش Assets دانلود کنید (یا artifact ورک‌فلو).
-2. روی گوشی: **Settings → Apps → Special access → Install unknown apps** را برای
-   مرورگر/فایل‌منیجر موردنظر فعال کنید.
-3. APK را باز کرده و **Install** بزنید (با کلید debug امضا شده — پیام «unsafe» طبیعی است).
-4. اولین اجرا چند ثانیه طول می‌کشد (استخراج فایل‌ها)؛ بعد رابط Peak بالا می‌آید.
-5. برای باتِ پیوسته، گزینه‌های **Battery optimization → Don't optimize** را برای Peak
-   فعال کنید تا اندروید سرویس را نکشد.
-
-## محدودیت‌های صادقانه (NOT TESTED / شناخته‌شده)
-
-| مورد | وضعیت |
-|---|---|
-| نصب و اجرای APK روی دستگاه واقعی | **NOT TESTED** — در محیط ساخت، شبیه‌ساز/دستگاه اندروید وجود ندارد؛ فقط ساخت در CI اعتبارسنجی می‌شود |
-| کراس‌کامپایل `better-sqlite3` با NDK | **NOT TESTED** در محیط لوکال (NDK موجود نیست) — در CI اجرا می‌شود؛ شناخته‌شده‌ترین نقطهٔ شکست احتمالی است |
-| امضای release واقعی | فعلاً با کلید **debug** (قابل نصب) — keystore باید بعداً در GitHub Secrets تنظیم شود؛ هرگز در Git نیست |
-| رانتایم Node **18.20.4** | آخرین انتشار رسمی nodejs-mobile است ولی Node 18 از ۳۰ آوریل ۲۰۲۵ **EOL** است؛ مسیر ارتقا: بیلدهای جامعه Node 22 (OpenFlun / Sportacandy) |
-| sharp (بهینه‌سازی تصویر Next) | روی اندروید نصب نمی‌شود — Next بدون آن هم کار می‌کند (بهینه‌سازی تصویر غیرفعال) |
-| اندازه | payload فشرده‌نشده ~۴۱۷MB (minecraft-data و next حجیم‌اند) — APK فشرده تخمیناً ~۱۲۰–۱۸۰MB؛ `libnode.so` به‌تنهایی ۶۲MB |
-
-## پرسش‌های متداول
-
-**چرا WebView و نه React Native؟**
-برای اینکه «عین نسخهٔ PC» باشد: همان کد Next، همان بات، همان دیتابیس — فقط پوستهٔ
-UI به‌جای BrowserWindow الکترون، WebView اندروید است.
-
-**چرا فقط arm64-v8a؟**
-تمام گوشی‌های مدرن arm64 هستند. برای شبیه‌ساز x86_64: `gradle assembleRelease -PpeakAbis=x86_64`
-(و `PEAK_ABIS=x86_64` برای اسکریپت آماده‌سازی).
-
-**بات هنگام بستن اپ؟**
-سرویس پیش‌زمینه ادامه می‌دهد؛ با ضربه روی نوتیفیکیشن برمی‌گردید. برای اجرای همیشگی،
-بهینه‌سازی باتری را خاموش کنید (بالا).
+---
+<!-- merged from docs/EXE-GUIDE.md -->
 # 🖥️ فایل EXE ویندوز — دانلود، نصب و ساخت
 
 این صفحه دو بخش دارد: **بخش ۱** برای کسی که فقط می‌خواهد برنامه را نصب کند،
@@ -223,6 +135,109 @@ node scripts\package-check.mjs --strict   # اگر چیزی کم بود، با �
 * آنتی‌ویروس گاهی فایل‌های ساخته‌شده با electron-builder را مشکوک می‌داند؛ در Windows Security استثنا بگذار.
 * برای تغییر آیکون: `build/icon.ico` (حداقل ۲۵۶×۲۵۶) — اگر خراب باشد، از `build/icon.png` ساخته می‌شود.
 * اگر ساخت با خطای `typescript` مواجه شد: مطمئن شو `next.config.mjs` هست (نه `.ts`).
+
+
+---
+<!-- merged from docs/ANDROID.md -->
+# Peak روی اندروید — اجرای کامل روی خود گوشی (بدون سرور و VPS)
+
+نسخهٔ اندروید **عین نسخهٔ PC** کار می‌کند: رانتایم Node.js داخل خود APK است، سرور
+Next.js و بات ماینکرفت و دیتابیس همگی **روی خود گوشی** اجرا می‌شوند و WebView
+به `http://127.0.0.1:3784` (درون همان دستگاه) وصل می‌شود. هیچ سرور، VPS یا
+«ریموت‌کنترلی» در کار نیست.
+
+## معماری (عین electron/main.js)
+
+```
+┌─ Peak.apk ────────────────────────────────────────────────┐
+│  پوستهٔ Kotlin (MainActivity + NodeService)                │
+│    └─ پل JNI (node-jni.cpp) → node::Start                 │
+│         └─ libnode.so (nodejs-mobile 18.20.4 — arm64)      │
+│              └─ node node_modules/next/dist/bin/next start │
+│                   └─ سرور Next روی 127.0.0.1:3784          │
+│                        ├─ بات ماینکرفت + AI + SQLite       │
+│                        └─ WebView ← http://127.0.0.1:3784  │
+└────────────────────────────────────────────────────────────┘
+```
+
+- **رانتایم Node**: `libnode.so` از بستهٔ npm
+  [`nodejs-mobile-react-native@18.20.4`](https://www.npmjs.com/package/nodejs-mobile-react-native)
+  (Node 18.20.4 — MODULE_VERSION 108) به‌همراه هدرهای کامل — توسط
+  `scripts/prepare-android-assets.mjs` استخراج می‌شود. هیچ فایل باینری در Git نیست.
+- **نصب اپ روی گوشی**: assets (`.next` + `node_modules` پروداکشن + `package.json` +
+  `next.config.mjs` + `public`) در اولین اجرا به `filesDir/app` استخراج می‌شوند —
+  دقیقاً همان ساختار `resources/app` در ویندوز.
+- **داده‌ها**: دیتابیس SQLite مثل PC در پوشهٔ `data/` زیر filesDir برنامه می‌ماند.
+- **جلوگیری از خواب**: سرویس پیش‌زمینه + WakeLock تا بات هنگام قفل بودن صفحه زنده بماند.
+- **پالایش‌ها**: عین `scripts/build-exe.ps1` — حذف `minecraft-data/{bedrock,doc,tools}`،
+  `test/tests`، `*.md`/`README*`، و `@next/swc-*` و `@img/*` (بیلد-تایم / sharp).
+
+## ساخت APK
+
+### راه ۱ — GitHub Actions (توصیه‌شده)
+
+ورک‌فلوی `.github/workflows/build-android.yml` با هر push به main یا تگ `v*` یا
+اجرا دستی:
+
+1. `npm ci` + `npm run build` (بیلد Next)
+2. `node scripts/prepare-android-assets.mjs` (استخراج libnode + مونتاژ assets)
+3. `scripts/build-android-native.sh arm64-v8a` (کراس‌کامپایل `better-sqlite3` با NDK r26d)
+4. `gradle assembleRelease` (Gradle 8.7 + JDK 17 — بدون نیاز به Gradle wrapper در Git)
+5. آپلود artifact به‌نام `Peak-<version>.apk` (+ پیوست به Release در تگ‌ها)
+
+### راه ۲ — لوکال
+
+پیش‌نیاز: JDK 17، Android SDK + NDK r26+، Node 22، Gradle 8.7.
+
+```bash
+npm ci && npm run build
+node scripts/prepare-android-assets.mjs
+export ANDROID_NDK_HOME=~/Android/Sdk/ndk/26.3.11579264
+bash scripts/build-android-native.sh arm64-v8a
+cd android && gradle assembleRelease
+# خروجی: android/app/build/outputs/apk/release/app-release.apk
+```
+
+نسخهٔ APK به‌صورت خودکار از `package.json` خوانده می‌شود (الان 1.0.2).
+
+## نصب روی گوشی
+
+1. فایل `Peak-1.0.3.apk` را از بخش Assets دانلود کنید (یا artifact ورک‌فلو).
+2. روی گوشی: **Settings → Apps → Special access → Install unknown apps** را برای
+   مرورگر/فایل‌منیجر موردنظر فعال کنید.
+3. APK را باز کرده و **Install** بزنید (با کلید debug امضا شده — پیام «unsafe» طبیعی است).
+4. اولین اجرا چند ثانیه طول می‌کشد (استخراج فایل‌ها)؛ بعد رابط Peak بالا می‌آید.
+5. برای باتِ پیوسته، گزینه‌های **Battery optimization → Don't optimize** را برای Peak
+   فعال کنید تا اندروید سرویس را نکشد.
+
+## محدودیت‌های صادقانه (NOT TESTED / شناخته‌شده)
+
+| مورد | وضعیت |
+|---|---|
+| نصب و اجرای APK روی دستگاه واقعی | **NOT TESTED** — در محیط ساخت، شبیه‌ساز/دستگاه اندروید وجود ندارد؛ فقط ساخت در CI اعتبارسنجی می‌شود |
+| کراس‌کامپایل `better-sqlite3` با NDK | **NOT TESTED** در محیط لوکال (NDK موجود نیست) — در CI اجرا می‌شود؛ شناخته‌شده‌ترین نقطهٔ شکست احتمالی است |
+| امضای release واقعی | فعلاً با کلید **debug** (قابل نصب) — keystore باید بعداً در GitHub Secrets تنظیم شود؛ هرگز در Git نیست |
+| رانتایم Node **18.20.4** | آخرین انتشار رسمی nodejs-mobile است ولی Node 18 از ۳۰ آوریل ۲۰۲۵ **EOL** است؛ مسیر ارتقا: بیلدهای جامعه Node 22 (OpenFlun / Sportacandy) |
+| sharp (بهینه‌سازی تصویر Next) | روی اندروید نصب نمی‌شود — Next بدون آن هم کار می‌کند (بهینه‌سازی تصویر غیرفعال) |
+| اندازه | payload فشرده‌نشده ~۴۱۷MB (minecraft-data و next حجیم‌اند) — APK فشرده تخمیناً ~۱۲۰–۱۸۰MB؛ `libnode.so` به‌تنهایی ۶۲MB |
+
+## پرسش‌های متداول
+
+**چرا WebView و نه React Native؟**
+برای اینکه «عین نسخهٔ PC» باشد: همان کد Next، همان بات، همان دیتابیس — فقط پوستهٔ
+UI به‌جای BrowserWindow الکترون، WebView اندروید است.
+
+**چرا فقط arm64-v8a؟**
+تمام گوشی‌های مدرن arm64 هستند. برای شبیه‌ساز x86_64: `gradle assembleRelease -PpeakAbis=x86_64`
+(و `PEAK_ABIS=x86_64` برای اسکریپت آماده‌سازی).
+
+**بات هنگام بستن اپ؟**
+سرویس پیش‌زمینه ادامه می‌دهد؛ با ضربه روی نوتیفیکیشن برمی‌گردید. برای اجرای همیشگی،
+بهینه‌سازی باتری را خاموش کنید (بالا).
+
+
+---
+<!-- merged from docs/PROVIDERS.md -->
 # راهنمای ارائه‌دهنده‌های هوش مصنوعی (Peak)
 
 این سند دقیقاً همان چیزی را توضیح می‌دهد که کد برنامه انجام می‌دهد:
@@ -467,149 +482,11 @@ npm run build      # بیلد تولیدی
 | `402` | کریdit تمام شده | شارژ حساب یا استفاده از مدل `:free` |
 | `429` | محدودیت نرخ | کمی بعد دوباره تلاش کنید |
 | مدل «نصب نیست» (Ollama) | مدل pull نشده | `ollama pull <name>` |
-| همه‌چیز آفلاین | دسترسی `aiNetwork` خاموش است | صفحهٔ «دسترسی‌ها» → دسترسی اینترنتی مدل‌ها |# 🧩 راهنمای ساخت مود برای Peak
+| همه‌چیز آفلاین | دسترسی `aiNetwork` خاموش است | صفحهٔ «دسترسی‌ها» → دسترسی اینترنتی مدل‌ها |
 
-با سیستم مودهای Peak می‌توانی بدون دست زدن به هستهٔ برنامه، قابلیت جدید اضافه کنی.
-
-## روش‌ها
-
-1. **از داخل برنامه**: صفحهٔ «مودها» ← «ساخت مود جدید»
-2. **فایل JSON**: فایل `.json` را داخل پوشهٔ `data/mods/` بگذار (مثلاً `my_pack.json`)
-
-## ☕ مودهای جاوا (.jar) — Minecraft Java Edition
-
-علاوه بر مودهای JSON، می‌توانی مودهای واقعی جاوا (مثل مودهای **Forge/Fabric** با پسوند `.jar`) را هم مدیریت کنی:
-
-1. **افزودن**: صفحهٔ «مودها» ← بخش «مودهای جاوا» ← فایل `.jar` را آپلود کن (در `data/mods/java/` ذخیره می‌شود)
-2. **روشن/خاموش**: با دکمهٔ هر مود — مود خاموش از بازی نصب نمی‌شود
-3. **مسیر بازی**: مسیر پوشهٔ `mods` بازی‌ات را بنویس (مثلاً `.../.minecraft/mods` یا پوشهٔ mods سرور) و «ذخیرهٔ مسیر» را بزن
-4. **نصب**: «نصب مودهای روشن در بازی» — همهٔ فایل‌های `.jar` روشن در پوشهٔ mods بازی کپی می‌شوند
-
-نکته‌ها:
-- فقط فایل `.jar` سالم پذیرفته می‌شود (حداکثر ۲۰۰ مگابایت) — فایل‌های جعلی رد می‌شوند
-- برای اینکه مودها داخل بازی لود شوند، بازی/سرور باید **Forge** یا **Fabric** نصب داشته باشد
-- این بخش هیچ فشاری روی سیستم ندارد؛ فایل‌ها فقط هنگام درخواست تو جابه‌جا می‌شوند
-
-## ساختار یک مود
-
-```json
-{
-  "id": "my_pack",
-  "name": "مود من",
-  "version": "1.0.0",
-  "author": "نام تو",
-  "description": "توضیح کوتاه",
-  "enabled": true,
-  "commands": [
-    {
-      "id": "c1",
-      "label": "عنوان دستور",
-      "samples": ["جمله اول", "جمله دوم"],
-      "reply": "پاسخ فوری متنی"
-    },
-    {
-      "id": "c2",
-      "label": "دستور سرور",
-      "samples": ["الماس بده به من"],
-      "op": "give {player} diamond 64"
-    },
-    {
-      "id": "c3",
-      "label": "توانایی ماینکرفت",
-      "samples": ["کیت خدا بده"],
-      "capability": "god_kit"
-    }
-  ]
-}
-```
-
-## انواع دستور
-
-| نوع | فیلد | کار |
-|---|---|---|
-| پاسخ متنی | `reply` | فوری و بدون اینترنت جواب می‌دهد |
-| دستور سرور | `op` | دستور اسلش ماینکرفت (نیاز به OP) |
-| توانایی | `capability` | یکی از ۴۴۵ توانایی داخلی (مثل `god_kit`، `god_seal_on`، `castle_op`، `follow`) |
-
-## نکته‌ها
-
-* در `op` می‌توانی از `{player}` (نام بازیکن)، `{self}` (نام ربات) و `{n}` استفاده کنی.
-* `samples` جمله‌های فعال‌ساز هستند — با صوت یا متن گفته شوند، اجرا می‌شود.
-* مودها فقط JSON ساخت‌یافته‌اند؛ **کد اجرا نمی‌شود** → امن و سبک.
-* هر مود حداکثر ۱۰۰ دستور.
-* از صفحهٔ مودها می‌توانی هر مود را روشن/خاموش یا حذف کنی.
-
-## فهرست توانایی‌های قابل استفاده در `capability`
-
-به [`docs/CAPABILITIES.md`](./CAPABILITIES.md) نگاه کن — هر شناسه در جدول هست.
-# ⚡ manix — دستیار خط فرمان Peak برای Daytona
-
-`manix` ابزار کوچکی است برای محیط‌های Daytona sandbox:
-
-## نصب
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ManiPeak/Peak-Core/main/install.sh | bash
-```
-
-## کارها
-* چاپ فهرست مدل‌های هوش مصنوعی و APIها
-* نصب/راه‌اندازی سریع Peak در سندباکس
-* اجرای پروژه بدون دردسر
-
-جزئیات بیشتر: مخزن `ManiPeak/Peak-Core`.
-
-
-برای فهرست کامل ۴۴۵ توانایی: [CAPABILITIES.md](./CAPABILITIES.md)
-# نمونهٔ تنظیمات محیطی Peak — این فایل را به .env کپی کنید و ویرایش کنید.
-# ⚠️ هرگز فایل .env را در گیت کامیت نکنید (در .gitignore هست).
-#
-#   cp .env.example .env
-#
-# اولویت مقادیر: تنظیمات ذخیره‌شده در صفحهٔ «تنظیمات» برنامه > متغیرهای محیطی زیر.
-# یعنی اگر در برنامه کلید را وارد کنید، همان استفاده می‌شود؛ این متغیرها فقط
-# نقش «پیش‌فرض/بکاپ» دارند (مثلاً برای اجرای CLI یا داکر).
-
-# ---------- Ollama (مدل محلی) ----------
-# آدرس سرویس. پیش‌فرض برنامه: http://127.0.0.1:11434
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-# مدلی که باید نصب باشد (نام دقیق خروجی `ollama list`)
-OLLAMA_MODEL=llama3.2:3b
-
-# ---------- OpenRouter ----------
-# کلید از https://openrouter.ai/keys  →  فقط متغیر محیطی، نه کد و نه گیت
-OPENROUTER_API_KEY=
-# شناسهٔ مدل (نمونه رایگان: نامی که در openrouter.ai/models با پسوند :free دیده می‌شود)
-OPENROUTER_MODEL=openai/gpt-4o-mini
-# هدرهای اختیاری معرفی برنامه (طبق مستندات رسمی OpenRouter)
-OPENROUTER_SITE_URL=http://localhost:3784
-OPENROUTER_APP_NAME=Peak
-
-# ---------- سایر ارائه‌دهنده‌های OpenAI-Compatible ----------
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
-GROQ_API_KEY=
-XAI_API_KEY=
-
-# ---------- 9Router (پروکسی محلی اختیاری) ----------
-# 9router یک پروکسی محلی OpenAI-Compatible است: http://localhost:20128/v1
-NINE_ROUTTER_BASE_URL=http://127.0.0.1:20128/v1
-NINE_ROUTTER_API_KEY=
-
-# ---------- لاگ و دیتابیس ----------
-# مسیر فایل SQLite (پیش‌فرض: ./data/app_db.sqlite)
-DASTIAR_DB_PATH=
-# 1 = نوشتن لاگ ساخت‌یافته در data/peak-server.log
-PEAK_LOG_FILE=0
-# سطح لاگ: debug | info | warn | error
-PEAK_LOG_LEVEL=info
-
-# ---------- تست ----
-# 1 = اجرای تست‌های یکپارچه فقط وقتی متغیر محیطی ست شود (پیش‌فرض: رد می‌شوند)
-PEAK_RUN_LIVE_TESTS=0
 
 ---
-.env.example merged into docs/README.md for file reduction
+<!-- merged from docs/CAPABILITIES.md -->
 # 📖 کاتالوگ کامل توانایی‌های ماینکرفت Peak
 
 > تولیدشده از روی کد — مجموع **445** توانایی. همه با صوت/متن فارسی و توکن `[[mc:id]]` اجرا می‌شوند.
@@ -1109,5 +986,209 @@ PEAK_RUN_LIVE_TESTS=0
 | `unfreeze` | آب شدن | از حالت یخ درمی‌آید | 🤖 ربات |
 | `night_swim` | 🌙 شنای شبانه | تنفس آبی + دید شب — غواصی حرفه‌ای | 🤖 ربات (OP) |
 
-Fonts via CDN
-Peak 1.0.3
+
+---
+<!-- merged from docs/MODS-GUIDE.md -->
+# 🧩 راهنمای ساخت مود برای Peak
+
+با سیستم مودهای Peak می‌توانی بدون دست زدن به هستهٔ برنامه، قابلیت جدید اضافه کنی.
+
+## روش‌ها
+
+1. **از داخل برنامه**: صفحهٔ «مودها» ← «ساخت مود جدید»
+2. **فایل JSON**: فایل `.json` را داخل پوشهٔ `data/mods/` بگذار (مثلاً `my_pack.json`)
+
+## ☕ مودهای جاوا (.jar) — Minecraft Java Edition
+
+علاوه بر مودهای JSON، می‌توانی مودهای واقعی جاوا (مثل مودهای **Forge/Fabric** با پسوند `.jar`) را هم مدیریت کنی:
+
+1. **افزودن**: صفحهٔ «مودها» ← بخش «مودهای جاوا» ← فایل `.jar` را آپلود کن (در `data/mods/java/` ذخیره می‌شود)
+2. **روشن/خاموش**: با دکمهٔ هر مود — مود خاموش از بازی نصب نمی‌شود
+3. **مسیر بازی**: مسیر پوشهٔ `mods` بازی‌ات را بنویس (مثلاً `.../.minecraft/mods` یا پوشهٔ mods سرور) و «ذخیرهٔ مسیر» را بزن
+4. **نصب**: «نصب مودهای روشن در بازی» — همهٔ فایل‌های `.jar` روشن در پوشهٔ mods بازی کپی می‌شوند
+
+نکته‌ها:
+- فقط فایل `.jar` سالم پذیرفته می‌شود (حداکثر ۲۰۰ مگابایت) — فایل‌های جعلی رد می‌شوند
+- برای اینکه مودها داخل بازی لود شوند، بازی/سرور باید **Forge** یا **Fabric** نصب داشته باشد
+- این بخش هیچ فشاری روی سیستم ندارد؛ فایل‌ها فقط هنگام درخواست تو جابه‌جا می‌شوند
+
+## ساختار یک مود
+
+```json
+{
+  "id": "my_pack",
+  "name": "مود من",
+  "version": "1.0.0",
+  "author": "نام تو",
+  "description": "توضیح کوتاه",
+  "enabled": true,
+  "commands": [
+    {
+      "id": "c1",
+      "label": "عنوان دستور",
+      "samples": ["جمله اول", "جمله دوم"],
+      "reply": "پاسخ فوری متنی"
+    },
+    {
+      "id": "c2",
+      "label": "دستور سرور",
+      "samples": ["الماس بده به من"],
+      "op": "give {player} diamond 64"
+    },
+    {
+      "id": "c3",
+      "label": "توانایی ماینکرفت",
+      "samples": ["کیت خدا بده"],
+      "capability": "god_kit"
+    }
+  ]
+}
+```
+
+## انواع دستور
+
+| نوع | فیلد | کار |
+|---|---|---|
+| پاسخ متنی | `reply` | فوری و بدون اینترنت جواب می‌دهد |
+| دستور سرور | `op` | دستور اسلش ماینکرفت (نیاز به OP) |
+| توانایی | `capability` | یکی از ۴۴۵ توانایی داخلی (مثل `god_kit`، `god_seal_on`، `castle_op`، `follow`) |
+
+## نکته‌ها
+
+* در `op` می‌توانی از `{player}` (نام بازیکن)، `{self}` (نام ربات) و `{n}` استفاده کنی.
+* `samples` جمله‌های فعال‌ساز هستند — با صوت یا متن گفته شوند، اجرا می‌شود.
+* مودها فقط JSON ساخت‌یافته‌اند؛ **کد اجرا نمی‌شود** → امن و سبک.
+* هر مود حداکثر ۱۰۰ دستور.
+* از صفحهٔ مودها می‌توانی هر مود را روشن/خاموش یا حذف کنی.
+
+## فهرست توانایی‌های قابل استفاده در `capability`
+
+به [`docs/CAPABILITIES.md`](./CAPABILITIES.md) نگاه کن — هر شناسه در جدول هست.
+
+
+---
+<!-- merged from docs/MANIX.md -->
+# ⚡ manix — دستیار خط فرمان Peak برای Daytona
+
+`manix` ابزار کوچکی است برای محیط‌های Daytona sandbox:
+
+## نصب
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ManiPeak/Peak-Core/main/install.sh | bash
+```
+
+## کارها
+* چاپ فهرست مدل‌های هوش مصنوعی و APIها
+* نصب/راه‌اندازی سریع Peak در سندباکس
+* اجرای پروژه بدون دردسر
+
+جزئیات بیشتر: مخزن `ManiPeak/Peak-Core`.
+
+
+---
+<!-- appendix: .env.example (v1.0.3: file merged here; copy block to .env) -->
+## Appendix: .env template
+
+```ini
+# نمونهٔ تنظیمات محیطی Peak — این فایل را به .env کپی کنید و ویرایش کنید.
+# ⚠️ هرگز فایل .env را در گیت کامیت نکنید (در .gitignore هست).
+#
+#   cp .env.example .env
+#
+# اولویت مقادیر: تنظیمات ذخیره‌شده در صفحهٔ «تنظیمات» برنامه > متغیرهای محیطی زیر.
+# یعنی اگر در برنامه کلید را وارد کنید، همان استفاده می‌شود؛ این متغیرها فقط
+# نقش «پیش‌فرض/بکاپ» دارند (مثلاً برای اجرای CLI یا داکر).
+
+# ---------- Ollama (مدل محلی) ----------
+# آدرس سرویس. پیش‌فرض برنامه: http://127.0.0.1:11434
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+# مدلی که باید نصب باشد (نام دقیق خروجی `ollama list`)
+OLLAMA_MODEL=llama3.2:3b
+
+# ---------- OpenRouter ----------
+# کلید از https://openrouter.ai/keys  →  فقط متغیر محیطی، نه کد و نه گیت
+OPENROUTER_API_KEY=
+# شناسهٔ مدل (نمونه رایگان: نامی که در openrouter.ai/models با پسوند :free دیده می‌شود)
+OPENROUTER_MODEL=openai/gpt-4o-mini
+# هدرهای اختیاری معرفی برنامه (طبق مستندات رسمی OpenRouter)
+OPENROUTER_SITE_URL=http://localhost:3784
+OPENROUTER_APP_NAME=Peak
+
+# ---------- سایر ارائه‌دهنده‌های OpenAI-Compatible ----------
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+GROQ_API_KEY=
+XAI_API_KEY=
+
+# ---------- 9Router (پروکسی محلی اختیاری) ----------
+# 9router یک پروکسی محلی OpenAI-Compatible است: http://localhost:20128/v1
+NINE_ROUTTER_BASE_URL=http://127.0.0.1:20128/v1
+NINE_ROUTTER_API_KEY=
+
+# ---------- لاگ و دیتابیس ----------
+# مسیر فایل SQLite (پیش‌فرض: ./data/app_db.sqlite)
+DASTIAR_DB_PATH=
+# 1 = نوشتن لاگ ساخت‌یافته در data/peak-server.log
+PEAK_LOG_FILE=0
+# سطح لاگ: debug | info | warn | error
+PEAK_LOG_LEVEL=info
+
+# ---------- تست ----
+# 1 = اجرای تست‌های یکپارچه فقط وقتی متغیر محیطی ست شود (پیش‌فرض: رد می‌شوند)
+PEAK_RUN_LIVE_TESTS=0
+```
+
+
+
+---
+<!-- appendix: release steps -->
+# 🚀 مراحل انتشار رسمی v1.0.3 — گام‌به‌گام (به فارسی)
+
+> وضعیت: همه‌چیز آماده است؛ فقط انتشار GitHub مانده (در سندباکس بسته بود).
+> بعد از انتقال به مخزن جدید و دادن دسترسی، مراحل زیر را انجام می‌دهیم.
+
+## ۱) انتقال مخزن (در مخزن جدید)
+
+```bash
+git clone Peak-git.bundle peak-new
+cd peak-new
+git remote add origin https://github.com/<user>/<repo>.git
+git push origin arena/03c208a6-peak:main
+git push origin arena/03c208a6-peak:refs/heads/arena/03c208a6-peak
+```
+
+## ۲) ساخت خودکار نسخه‌ها (GitHub Actions)
+
+با push به main این‌ها خودکار ساخته می‌شوند:
+
+- **ویندوز**: `Peak-Setup-1.0.3.exe` + `Peak-Portable-1.0.3.exe` + `INSTALL-GUIDE.md` + `release-notes.md` (ورک‌فلوی build-windows)
+- **اندروید**: `Peak-1.0.3.apk` — اجرای کامل روی خود گوشی (ورک‌فلوی build-android)
+
+نکتهٔ اندروید: اولین اجرا ۱۵–۳۰ دقیقه طول می‌کشد (استخراج libnode از npm + کراس‌کامپایل better-sqlite3 با NDK). خروجی را از بخش **Artifacts** همان اجرا دانلود کنید.
+
+## ۳) انتشار رسمی (وقتی دسترسی دادید)
+
+```bash
+git tag v1.0.3
+git push origin v1.0.3
+```
+
+ورک‌فلوها به‌صورت خودکار:
+- تگ `v1.0.3` را با نام نمایشی **«Peak 1.0.3 — نسخهٔ رسمی»** می‌سازند
+- نصب‌کننده‌ها + نسخهٔ قابل حمل + راهنماها + **APK اندروید** را به Release پیوست می‌کنند
+- یادداشت‌های انتشار (از CHANGELOG) را در توضیح Release می‌گذارند
+
+## ۴) چک‌لیست نهایی
+
+- [ ] push به main (تاریخچهٔ کامل از bundle)
+- [ ] تگ `v1.0.3` + Release رسمی
+- [ ] دانلود و نصب واقعی Setup روی ویندوز (بررسی میان‌بر + صفحهٔ دانلود)
+- [ ] دانلود APK از Release و نصب روی گوشی (NOT TESTED تا این لحظه — اولین تست واقعی)
+- [ ] اتصال واقعی بات به سرور ماینکرفت
+
+## ⚠️ محدودیت‌های گزارش‌شده (صادقانه)
+
+- **APK اندروید**: ساخت در CI طراحی شده ولی نصب/اجرا روی گوشی **NOT TESTED** است (در محیط ساخت، دستگاه/شبیه‌ساز اندروید نبود). کراس‌کامپایل `better-sqlite3` هم فقط در CI اجرا می‌شود.
+- **امضا**: فایل‌های ویندوز و APK فعلاً با کلید debug/بدون امضای سازمانی‌اند (keystore باید در Secrets تنظیم شود — هرگز در Git).
+- **Node 18.20.4** در اندروید آخرین nodejs-mobile رسمی است ولی EOL (آوریل ۲۰۲۵) — مسیر ارتقا در docs/ANDROID.md.

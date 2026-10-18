@@ -3,8 +3,8 @@
  */
 import type { AppSettings, MemoryDTO } from "@/lib/types";
 import { formatMemoriesForPrompt } from "@/lib/memory";
-import { jalaliDateTime } from "@/lib/persian";
-import { MIND_PROMPT } from "@/lib/mind";
+import { jalaliDateTime } from "@/lib/pure-utils";
+import { MIND_PROMPT } from "@/lib/pure-utils";
 import {
   CAPABILITIES,
   capabilitiesPromptDigest

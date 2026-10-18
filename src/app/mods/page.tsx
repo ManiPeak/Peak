@@ -19,7 +19,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { EXAMPLE_MODS, type ModCommand, type ModDefinition } from "@/lib/mods-data";
+import { EXAMPLE_MODS, type ModCommand, type ModDefinition } from "@/lib/pure-utils";
 
 type NewCommand = {
   label: string;

@@ -7,11 +7,11 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { toEnglishDigits } from "@/lib/persian";
-import type { ModCommand, ModDefinition } from "@/lib/mods-data";
+import { toEnglishDigits } from "@/lib/pure-utils";
+import type { ModCommand, ModDefinition } from "@/lib/pure-utils";
 
 export type { ModCommand, ModDefinition };
-export { EXAMPLE_MODS } from "@/lib/mods-data";
+export { EXAMPLE_MODS } from "@/lib/pure-utils";
 
 /** نتیجهٔ اعتبارسنجی */
 export interface ModValidation {

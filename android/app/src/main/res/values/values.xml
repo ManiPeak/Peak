@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Peak 1.0.3: colors+strings+styles merged (3 -> 1) -->
 <resources>
+    <color name="peak_bg">#17050b</color>
+    <color name="peak_accent">#b962ff</color>
+    <string name="app_name">Peak</string>
     <style name="Theme.Peak" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/peak_bg</item>
         <item name="android:statusBarColor">@color/peak_bg</item>

@@ -5,10 +5,10 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Radar, Sparkles } from "lucide-react";
-import { Btn, Card, Field, Label } from "@/components/ui";
+import { Btn, Card, Field, Label } from "@/components/ui-kit";
 import { apiGet, apiSend } from "@/lib/client";
-import type { AiCatalogEntry } from "@/lib/aiCatalog";
-import type { AiProbeResult } from "@/lib/aiProbe";
+import type { AiCatalogEntry } from "@/lib/ai-core";
+import type { AiProbeResult } from "@/lib/ai-core";
 
 export default function AiProbePanel() {
   const [catalog, setCatalog] = useState<AiCatalogEntry[]>([]);

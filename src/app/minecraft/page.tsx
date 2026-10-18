@@ -20,8 +20,8 @@ import {
   Trash2,
   Zap
 } from "lucide-react";
-import { Btn, Card, Field, Label, PageTitle } from "@/components/ui";
-import { EmergencyStop } from "@/components/EmergencyStop";
+import { Btn, Card, Field, Label, PageTitle } from "@/components/ui-kit";
+import { EmergencyStop } from "@/components/ui-kit";
 import {
   CAPABILITIES,
   CAP_CATEGORIES,
@@ -29,7 +29,7 @@ import {
 } from "@/minecraft/capabilities";
 import type { PublicSettings } from "@/lib/types";
 import { apiGet, apiSend } from "@/lib/client";
-import type { BotLogEntry, BotStatus } from "@/minecraft/types";
+import type { BotLogEntry, BotStatus } from "@/minecraft/core";
 import type { ServerDTO } from "@/lib/types";
 
 const LOG_CLASS: Record<BotLogEntry["type"], string> = {

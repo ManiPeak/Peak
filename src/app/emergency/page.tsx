@@ -11,8 +11,8 @@ import {
   Volume2,
   Zap
 } from "lucide-react";
-import { PageTitle } from "@/components/ui";
-import { EmergencyStop } from "@/components/EmergencyStop";
+import { PageTitle } from "@/components/ui-kit";
+import { EmergencyStop } from "@/components/ui-kit";
 import { apiGet, isSpeaking, triggerEmergency } from "@/lib/client";
 
 interface McStatus {

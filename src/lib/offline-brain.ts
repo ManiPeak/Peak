@@ -5,7 +5,7 @@
  */
 import type { AppSettings, MemoryDTO } from "@/lib/types";
 import { configLooksComplete, resolveConfig } from "@/lib/providers";
-import { jalaliDate, jalaliDateTime, jalaliTime, toPersianDigits } from "@/lib/persian";
+import { jalaliDate, jalaliDateTime, jalaliTime, toPersianDigits } from "@/lib/pure-utils";
 import { skillReply, SKILL_COUNT } from "@/lib/offline-skills";
 
 export interface OfflineContext {
