@@ -1,0 +1,205 @@
+# Peak 1.0.3 — Unified CI (windows + android)
+# Merged from build-windows.yml + build-android.yml for 99-file optimization
+name: Build Android APK
+
+# اندروید «عین نسخهٔ PC»: رانتایم Node داخل APK + همان سرور Next — بدون هیچ سرور یا VPS.
+# منابع: libnode از npm (nodejs-mobile-react-native@18.20.4) + کراس‌کامپایل better-sqlite3 با NDK.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm config set nodedir /tmp/nodehdrs
+          ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Prepare Android assets (libnode + app bundle)
+        run: node scripts/prepare-android-assets.mjs
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          link-as-latest: true
+
+      - name: Cross-compile better-sqlite3 (arm64-v8a)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-native.sh arm64-v8a
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Assemble APK
+        working-directory: android
+        run: gradle assembleRelease
+
+      - name: Name APK from package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cp android/app/build/outputs/apk/release/app-release.apk "Peak-$VERSION.apk"
+          echo "APK_NAME=Peak-$VERSION.apk" >> "$GITHUB_ENV"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Peak-Android-APK
+          path: ${{ env.APK_NAME }}
+          if-no-files-found: error
+
+      - name: Attach APK to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK_NAME }}
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+# ساخت خودکار EXE ویندوز — Peak
+#
+# ۱) ساخت کامل با scripts/build-exe.ps1 (نصب وابستگی ← بیلد Next ← Node قابل‌حمل ← electron-builder)
+# ۲) ساخت نام‌های ثابت Peak-Setup-Latest.exe / Peak-Portable-Latest.exe
+# ۳) بازرسی بستهٔ ساخته‌شده (resources/node/node.exe و .next/BUILD_ID) با هشدار گویا
+# ۴) انتشار در «ریلیز چرخشی» با برچسب latest و make_latest=true
+#    → لینک ثابت https://github.com/ManiPeak/Peak/releases/latest/download/Peak-Setup-Latest.exe
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# اجراها پشت سر هم (نه موازی) تا دو آپلود ~۸۵۰ مگابایتی هم‌زمان روی یک ریلیز خراب‌کاری نکنند
+concurrency:
+  group: build-windows-release
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build EXE (all-in-one script)
+        shell: pwsh
+        run: ./scripts/build-exe.ps1
+
+      # نام‌های ثابت — همیشه ساخته می‌شوند تا هم Artifact و هم Release همان لینک‌های README را داشته باشند
+      - name: Make Latest names
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $s = @(Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -match "(?i)setup" -and $_.Name -notmatch "(?i)latest" })
+          $p = @(Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -match "(?i)portable" -and $_.Name -notmatch "(?i)latest" })
+          if ($s.Count -gt 0) {
+            Copy-Item $s[0].FullName "dist/Peak-Setup-Latest.exe" -Force
+            Write-Host ("Latest setup  = " + $s[0].Name + "  -> dist/Peak-Setup-Latest.exe")
+          } else {
+            Write-Host "::warning::هیچ فایل Setup ای در dist ساخته نشد — Peak-Setup-Latest.exe ساخته نشد."
+          }
+          if ($p.Count -gt 0) {
+            Copy-Item $p[0].FullName "dist/Peak-Portable-Latest.exe" -Force
+            Write-Host ("Latest portable = " + $p[0].Name + "  -> dist/Peak-Portable-Latest.exe")
+          } else {
+            Write-Host "::warning::هیچ فایل Portable ای در dist ساخته نشد — Peak-Portable-Latest.exe ساخته نشد."
+          }
+
+      # بازرسی محتوای بسته — دقیقاً همان دو موردی که قبلاً بی‌صدا خراب می‌شد:
+      # resources/node/node.exe (Node داخل بسته) و resources/app/.next/BUILD_ID (بیلد Next)
+      - name: Package check (resources/node/node.exe + .next/BUILD_ID)
+        if: always()
+        shell: pwsh
+        run: |
+          node scripts/package-check.mjs 2>&1 | Tee-Object -FilePath package-check.txt
+          Write-Host "---- package-check.txt ----"
+          Get-Content package-check.txt -ErrorAction SilentlyContinue | Select-Object -Last 40
+
+      # Artifact ها — همان فایل‌هایی که در README/برنامه معرفی شده‌اند
+      # (اگر ساخت شکست خورده باشد، این مرحله فقط هشدار می‌دهد؛ علت اصلی جای دیگری با ::error:: گزارش شده است)
+      - name: Upload EXEs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Peak-Windows-EXE
+          path: dist/*.exe
+          if-no-files-found: warn
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Log
+          path: |
+            dist-log.txt
+            npm-log.txt
+            package-check.txt
+          if-no-files-found: ignore
+
+      # یادداشت انتشار از CHANGELOG + راهنمای نصب — برای body و فایل‌های ریلیز
+      - name: Release notes + install guide
+        if: always()
+        shell: pwsh
+        run: |
+          node scripts/release-notes.mjs
+          Write-Host "---- release-notes.md (head) ----"
+          Get-Content release-notes.md -ErrorAction SilentlyContinue | Select-Object -First 25
+
+      # انتشار: روی main/master → ریلیز چرخشی با برچسب latest (و make_latest=true)
+      #          روی tag (مثل v1.0.2) → ریلیز رسمی و مستقل همان نسخه
+      # فقط فایل‌های نصبی + راهنما/یادداشت منتشر می‌شوند (نه Peak.exe/node.exe/elevate.exe)
+      - name: Publish release
+        if: always() && hashFiles('dist/Peak-Setup-Latest.exe') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          name: ${{ github.ref_type == 'tag' && format('Peak {0} — نسخهٔ رسمی', github.ref_name) || 'Peak — نسخهٔ چرخشی (Latest)' }}
+          body_path: release-notes.md
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/Peak-Setup-*.exe
+            dist/Peak-Portable-*.exe
+            release-notes.md
+            INSTALL-GUIDE.md

@@ -1,0 +1,74 @@
+/*
+ * Peak Android — ماژول اپلیکیشن
+ *
+ * معماری «عین نسخهٔ PC»: رانتایم Node (libnode از nodejs-mobile) داخل APK +
+ * همان سرور Next.js داخل assets + WebView به 127.0.0.1.
+ * نسخه به‌صورت خودکار از package.json ریشه خوانده می‌شود تا همیشه هماهنگ بماند.
+ */
+import groovy.json.JsonSlurper
+
+def rootPkg = new JsonSlurper().parse(file("../../package.json"))
+
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.peak.app"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.peak.app"
+        // نسخه از package.json (الان 1.0.2) — هیچ هاردکدی نیست
+        versionName rootPkg.version.toString()
+        versionCode 4
+        minSdk 24
+        targetSdk 34
+
+        // فقط arm64-v8a (گوشی‌های امروزی) — برای شبیه‌ساز: -PpeakAbis=x86_64
+        def abis = (findProperty("peakAbis") ?: "arm64-v8a").toString().split(",")
+        ndk {
+            abiFilters (*abis)
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-frtti -fexceptions"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("src/main/cpp/CMakeLists.txt")
+            version "3.22.1"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            // تا قبل از تنظیم keystore در Secrets، خروجی release هم با کلید debug امضا می‌شود
+            // تا دست‌کم APK قابل نصب باشد (گزارش‌شده در docs/ANDROID.md)
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    packagingOptions {
+        jniLibs {
+            // libnode.so بزرگ است (۶۲ مگ) — فشرده نشود تا بارگذاری mmap سریع بماند
+            useLegacyPackaging = true
+        }
+    }
+}

@@ -1,0 +1,44 @@
+# ---- وابستگی‌ها و خروجی ساخت ----
+node_modules/
+.next/
+out/
+dist/
+build/output/
+*.tsbuildinfo
+
+# ---- فایل‌های تولیدشدهٔ انتشار (scripts/release-notes.mjs) ----
+release-notes.md
+INSTALL-GUIDE.md
+
+# ---- داده‌های محلی برنامه (دیتابیس = شامل کلید API، مودها، لاگ‌ها) ----
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+peak-log.txt
+peak-server.log
+
+# ---- اسرار هرگز نباید کامیت شود ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- سیستم‌عامل و ویرایشگر ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ---- اندروید (خروجی‌های حجیم ساخت — فقط سورس در Git می‌رود) ----
+android/vendor/
+android/app/src/main/assets/app/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aabgoogle_drive/
+/tmp/
