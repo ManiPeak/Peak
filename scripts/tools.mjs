@@ -413,7 +413,8 @@ function ensureAssets() {
     if (name === ".bin") return false;
     const r = path.relative(pkgPath, src).replaceAll("\\", "/");
     const segs = r.split("/");
-    if (segs.includes("test") || segs.includes("tests")) return false;
+    const nonRuntimeDirs = ["test", "tests", "__tests__", "sample", "samples", "example", "examples", "fixture", "fixtures"];
+    if (segs.some((seg) => nonRuntimeDirs.includes(seg))) return false;
     if (name.endsWith(".md") || name.startsWith("README")) return false;
     if (r.startsWith("build/Release/obj.target") || r.startsWith("build/Release/.deps")) return false;
     if (r.startsWith("prebuilds/win32") || r.startsWith("prebuilds/darwin") || r.startsWith("prebuilds/linux")) return false;
