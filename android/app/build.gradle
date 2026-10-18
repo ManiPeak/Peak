@@ -7,12 +7,12 @@
  */
 import groovy.json.JsonSlurper
 
-def rootPkg = new JsonSlurper().parse(file("../../package.json"))
-
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
 }
+
+def rootPkg = new JsonSlurper().parse(file("../../package.json"))
 
 android {
     namespace "com.peak.app"

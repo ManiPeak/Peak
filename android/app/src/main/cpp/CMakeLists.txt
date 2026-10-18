@@ -6,7 +6,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(peak-node CXX)
 
-set(VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../vendor/libnode)
+set(VENDOR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../vendor/libnode)
 
 add_library(node SHARED IMPORTED)
 set_target_properties(node PROPERTIES

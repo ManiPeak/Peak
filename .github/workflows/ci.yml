@@ -68,6 +68,10 @@ jobs:
         run: npm run build
       - name: Prepare Android assets (libnode + app bundle)
         run: node scripts/tools.mjs prepare-android-assets
+      - name: Setup Python 3.11 (old nodejs-mobile-gyp breaks on 3.12+)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -88,7 +92,16 @@ jobs:
           gradle-version: "8.7"
       - name: Assemble APK
         working-directory: android
-        run: gradle assembleRelease
+        run: |
+          gradle assembleRelease --stacktrace 2>&1 | tee /tmp/peak-gradle.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            {
+              grep -A16 -m1 "startup failed:" /tmp/peak-gradle.log || true
+              grep -iE "error:|FAILURE|Exception|Could not|failed" /tmp/peak-gradle.log | head -8 || true
+            } | while IFS= read -r line; do echo "::error::gradle: $line"; done || true
+            exit "$code"
+          fi
       - name: Name APK from package.json
         run: |
           VERSION=$(node -p "require('./package.json').version")

@@ -70,11 +70,11 @@ const config = {
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: "Peak",
-    artifactName: "Peak-Setup-${version}.${ext}",
-    // گرافیک ویزارد نصب — تصاویر BMP تیره با تم Peak (ساخت: build/*.bmp)
-    installerSidebar: "build/installer-sidebar.bmp",
-    uninstallerSidebar: "build/installer-sidebar.bmp",
-    installerHeaderImage: "build/installer-header.bmp"
+    artifactName: "Peak-Setup-${version}.${ext}"
+    // (v1.0.3: NSIS wizard BMP graphics removed — the referenced build/*.bmp files
+    //  never shipped in the repo, and 'installerHeaderImage' is not a valid
+    //  electron-builder 25 property (schema validation failed the Windows build).
+    //  NSIS now uses its default installer graphics.)
   },
 
   portable: {

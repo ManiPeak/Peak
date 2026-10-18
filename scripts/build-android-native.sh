@@ -10,6 +10,8 @@
 # ⚠️ وضعیت: این اسکریپت در CI اجرا و اعتبارسنجی می‌شود؛ در محیط توسعهٔ فعلی NDK
 # موجود نیست و اجرا نشده است (گزارش‌شده در docs/ANDROID.md به‌عنوان NOT_TESTED).
 set -euo pipefail
+# Surface the exact failing line as a CI annotation (job logs are not always reachable)
+trap 'echo "::error::[build-android-native] failed at line $LINENO: $BASH_COMMAND"' ERR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ABI="${1:-arm64-v8a}"
@@ -19,7 +21,7 @@ API_LEVEL=24
 NODEDIR="$ROOT/android/vendor/libnode"
 ASSETS_BSQL="$ROOT/android/app/src/main/assets/app/node_modules/better-sqlite3"
 
-die() { echo "[build-android-native] خطا: $*" >&2; exit 1; }
+die() { echo "::error::[build-android-native] $*" >&2; echo "[build-android-native] خطا: $*" >&2; exit 1; }
 log() { echo "[build-android-native] $*"; }
 
 # --- بررسی پیش‌نیازها ---
@@ -29,6 +31,7 @@ log() { echo "[build-android-native] $*"; }
 command -v python3 >/dev/null || die "python3 لازم است"
 
 PREBUILT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt"
+[ -d "$PREBUILT" ] || die "پوشهٔ prebuilt در NDK نیست: $PREBUILT (ANDROID_NDK_HOME=$ANDROID_NDK_HOME)"
 HOST_TAG="$(ls "$PREBUILT" | head -1)"
 TOOLCHAIN="$PREBUILT/$HOST_TAG"
 [ -d "$TOOLCHAIN" ] || die "toolchain llvm در NDK پیدا نشد: $PREBUILT"
@@ -51,25 +54,34 @@ export CXX_target="$CXX"
 [ -x "$CC" ] || die "کامپایلر NDK پیدا نشد: $CC"
 
 # --- nodejs-mobile-gyp به‌صورت محلی (بستهٔ npm، بدون نصب سراسری) ---
+# (v1.0.3 fix: npm pack alone shipped the package WITHOUT its dependencies
+#  -> "Cannot find module 'proc-log'". Must npm-install it instead.)
 GYP_CACHE="$ROOT/android/vendor/.cache/nodejs-mobile-gyp"
 mkdir -p "$GYP_CACHE"
-if [ ! -x "$GYP_CACHE/package/bin/node-gyp.js" ]; then
+if [ ! -f "$GYP_CACHE/node_modules/nodejs-mobile-gyp/bin/node-gyp.js" ]; then
   log "دریافت nodejs-mobile-gyp@0.4.0 از npm…"
-  (cd "$GYP_CACHE" && npm pack nodejs-mobile-gyp@0.4.0 >/dev/null && tar -xzf nodejs-mobile-gyp-0.4.0.tgz)
+  (cd "$GYP_CACHE" && (npm init -y >/dev/null 2>&1 || true) && npm install --no-audit --no-fund nodejs-mobile-gyp@0.4.0)
 fi
-GYP="$GYP_CACHE/package/bin/node-gyp.js"
+GYP="$GYP_CACHE/node_modules/nodejs-mobile-gyp/bin/node-gyp.js"
+[ -f "$GYP" ] || die "nodejs-mobile-gyp آماده نشد: $GYP"
 
 # --- ساخت better-sqlite3 ---
 log "کراس‌کامپایل better-sqlite3 برای $ABI (Node $TARGET_VERSION / ABI $NODE_MODULE_VERSION)…"
 cd "$ROOT/node_modules/better-sqlite3"
 rm -rf build
-node "$GYP" rebuild \
+if ! node "$GYP" rebuild \
   --nodedir="$NODEDIR" \
   --target="$TARGET_VERSION" \
   --arch="$GYP_ARCH" \
   --devdir="$ROOT/android/vendor/.cache/node-gyp" \
   -- \
-  -DOS=android -Dtarget_arch="$GYP_ARCH"
+  -DOS=android -Dtarget_arch="$GYP_ARCH" > /tmp/peak-gyp.log 2>&1; then
+  # Surface the tail as annotations (job log downloads are not always reachable)
+  grep -iE "error|exception|traceback|gyp err" /tmp/peak-gyp.log | tail -8 | while IFS= read -r line; do echo "::error::gyp: $line"; done || true
+  tail -20 /tmp/peak-gyp.log >&2
+  die "node-gyp rebuild failed (python3: $(python3 --version 2>&1); see gyp annotations above)"
+fi
+cat /tmp/peak-gyp.log
 
 BUILT="build/Release/better_sqlite3.node"
 [ -f "$BUILT" ] || die "خروجی ساخته نشد: $BUILT"

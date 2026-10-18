@@ -131,9 +131,6 @@ $cfg = @(
   '  createDesktopShortcut: true',
   '  createStartMenuShortcut: true',
   '  shortcutName: Peak',
-  '  installerSidebar: build/installer-sidebar.bmp',
-  '  uninstallerSidebar: build/installer-sidebar.bmp',
-  '  installerHeaderImage: build/installer-header.bmp',
   '  artifactName: "Peak-Setup-${version}.${ext}"',
   'portable:',
   '  artifactName: "Peak-Portable-${version}.${ext}"'
@@ -207,7 +204,7 @@ Get-ChildItem "dist" -ErrorAction SilentlyContinue | Format-Table Name, Length
 # اینجا فقط برای اجرای محلی (powershell -File scripts\build-exe.ps1) تکرار می‌شود.
 if (-not $env:GITHUB_ACTIONS) {
   Write-Host "== package check (local) =="
-  node scripts/package-check.mjs --no-summary
+  node scripts/tools.mjs package-check --no-summary
 }
 
 # ---------- 7) گزارش روی صفحهٔ run ----------
