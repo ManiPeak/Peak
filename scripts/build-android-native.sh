@@ -10,6 +10,8 @@
 # ⚠️ وضعیت: این اسکریپت در CI اجرا و اعتبارسنجی می‌شود؛ در محیط توسعهٔ فعلی NDK
 # موجود نیست و اجرا نشده است (گزارش‌شده در docs/ANDROID.md به‌عنوان NOT_TESTED).
 set -euo pipefail
+# Surface the exact failing line as a CI annotation (job logs are not always reachable)
+trap 'echo "::error::[build-android-native] failed at line $LINENO: $BASH_COMMAND"' ERR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ABI="${1:-arm64-v8a}"
