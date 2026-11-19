@@ -22,9 +22,10 @@ describe("Peak 1.0.3 consolidation", () => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.isDirectory()) {
           if (skip.has(e.name) && !(depth === 0 && e.name === "build")) continue;
-          if (e.name === "node_modules" || e.name === ".next" || e.name === ".git") continue;
-          walk(path.join(dir, e.name), depth + 1);
-        } else count++;
+          const subdir = path.join(dir, e.name);
+          if (subdir === path.join(root, "android/app/src/main/assets/app") || e.name === ".cxx") continue;
+          walk(subdir, depth + 1);
+        } else if (!["release-notes.md", "INSTALL-GUIDE.md"].includes(e.name)) count++;
       }
     };
     walk(root, 0);

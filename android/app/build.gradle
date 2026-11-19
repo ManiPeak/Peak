@@ -23,6 +23,7 @@ if (!hasReleaseKey && (releaseSigning.values().any { it } || project.hasProperty
 android {
     namespace "com.peak.app"
     compileSdk 34
+    ndkVersion "26.3.11579264"
 
     defaultConfig {
         applicationId "com.peak.app"
@@ -73,7 +74,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-            signingConfig hasReleaseKey ? signingConfigs.official : signingConfigs.debug
+            signingConfig = hasReleaseKey ? signingConfigs.official : signingConfigs.debug
         }
     }
 
