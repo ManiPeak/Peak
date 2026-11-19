@@ -88,15 +88,7 @@
 
 ### ساخت خودکار (پیشنهادی)
 
-با هر `push` روی `main`، ورک‌فلوی **Build Windows EXE** در گیت‌هاب خودش همه‌کار را می‌کند:
-
-1. `scripts/build-exe.ps1` را اجرا می‌کند (نصب وابستگی ← بیلد Next ← Node قابل‌حمل ← الکترون‌بیلدر)
-2. نام‌های ثابت `Peak-Setup-Latest.exe` و `Peak-Portable-Latest.exe` را می‌سازد
-3. با `scripts/package-check.mjs` محتوای بسته را بازرسی می‌کند و برای هر موردِ نبوده
-   **هشدار** می‌دهد (روی صفحهٔ run و در خلاصهٔ اجرا)
-4. فایل‌ها را در تب **Actions** (Artifacts) می‌گذارد و در **ریلیز چرخشی** با برچسب
-   `latest` منتشر می‌کند (`make_latest` روشن) — پس
-   `…/releases/latest/download/Peak-Setup-Latest.exe` همیشه آخرین نسخه است.
+ورک‌فلوی **Peak CI** در GitHub با `scripts/build-exe.ps1` نسخهٔ ویندوز را می‌سازد و هر دو فایل نصب‌کننده و پرتابل را در **Actions → Artifacts** قرار می‌دهد. در [انتشار رسمی](#انتشار-رسمی-peak-در-github)، نسخه‌های شماره‌دار و نام‌های ثابت `Peak-Setup-Latest.exe` و `Peak-Portable-Latest.exe` به ریلیز تأییدشده پیوست می‌شوند.
 
 ### ساخت دستی روی سیستم خودت
 
@@ -1125,7 +1117,7 @@ PEAK_RUN_LIVE_TESTS=0
 <!-- appendix: release steps -->
 # انتشار رسمی Peak در GitHub
 
-1. برای امضای APK، کلید انتشار اندروید را در یک نسخهٔ پشتیبان امن نگه دارید. در **Settings → Secrets and variables → Actions** این چهار **Repository secret** را تنظیم کنید:
+1. برای امضای APK، از کلید انتشار قبلی استفاده کنید. اگر اولین انتشار رسمی با کلید اختصاصی است، با `keytool -genkeypair -keystore peak-release.jks -alias peak -keyalg RSA -keysize 3072 -validity 10000` یک کلید بسازید و فایل را در محلی امن پشتیبان بگیرید. در **Settings → Secrets and variables → Actions** این چهار **Repository secret** را تنظیم کنید:
    - `PEAK_ANDROID_KEYSTORE_BASE64`: محتوای فایل JKS یا PKCS#12 به Base64 (مثلاً `base64 -w0 peak-release.jks` در لینوکس).
    - `PEAK_ANDROID_STORE_PASSWORD`: رمز keystore.
    - `PEAK_ANDROID_KEY_ALIAS`: نام alias کلید.

@@ -387,13 +387,9 @@ export default function DownloadsPage() {
             <span dir="ltr" className="rounded bg-night-950/60 px-1.5 py-0.5">
               main
             </span>{" "}
-            یا ساخت تگ{" "}
-            <span dir="ltr" className="rounded bg-night-950/60 px-1.5 py-0.5">
-              v*
-            </span>
-            ، ورک‌فلوی <b className="text-white">Build Windows EXE</b> خودش
-            نصب‌کننده و پرتابل را می‌سازد، بسته را بازرسی می‌کند و در Releases
-            منتشر می‌کند — به‌همراه راهنمای نصب و یادداشت انتشار.
+            ورک‌فلوی <b className="text-white">Peak CI</b> نصب‌کننده، نسخهٔ پرتابل
+            و APK آزمایشی را در Actions قرار می‌دهد. ریلیز رسمی فقط برای تگ نسخه و پس از
+            موفقیت ساخت و تست‌ها در Releases منتشر می‌شود.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <a
