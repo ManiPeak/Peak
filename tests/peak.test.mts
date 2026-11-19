@@ -37,9 +37,9 @@ describe("Peak 1.0.3 consolidation", () => {
     assert.match(cfg, /executableName:\s*"Peak"/);
   });
 
-  test("android versionCode is 6 and versionName comes from package.json", () => {
+  test("android versionCode is 7 and versionName comes from package.json", () => {
     const g = fs.readFileSync(path.join(root, "android/app/build.gradle"), "utf-8");
-    assert.match(g, /versionCode 6/);
+    assert.match(g, /versionCode 7/);
     assert.match(g, /versionName rootPkg\.version/);
   });
 

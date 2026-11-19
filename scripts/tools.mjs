@@ -403,8 +403,46 @@ async function start() {
 start().catch(fail);
 `;
 
+// Android's embedded Node is built without ICU. Its V8 rejects Unicode property
+// escapes at parse time. Rewrite real server-side regex literals only (not strings,
+// comments, or browser bundles), preserving the /u flag and Unicode matching.
+function prepareServerRegexForAndroid(outNm, { rewritePattern, tokenizer }) {
+  const propertyEscape = /(?<!\\)\\[pP]\{/;
+  const roots = [path.join(outNm, "next", "dist"), path.join(assetsDir, ".next", "server")];
+  let changed = 0;
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(file);
+        continue;
+      }
+      if (!entry.isFile() || !/\.[cm]?js$/.test(entry.name)) continue;
+      const source = fs.readFileSync(file, "utf8");
+      if (!propertyEscape.test(source)) continue;
+      const replacements = [];
+      for (const token of tokenizer(source, { ecmaVersion: "latest", sourceType: "module" })) {
+        if (token.type.label !== "regexp") continue;
+        const { pattern, flags } = token.value;
+        if (!flags.includes("u") || !propertyEscape.test(pattern)) continue;
+        const compatible = rewritePattern(pattern, flags, { unicodePropertyEscapes: "transform" });
+        replacements.push({ start: token.start, end: token.end, text: `/${compatible}/${flags}` });
+      }
+      if (!replacements.length) continue;
+      let rewritten = source;
+      for (const { start, end, text } of replacements.reverse()) {
+        rewritten = rewritten.slice(0, start) + text + rewritten.slice(end);
+      }
+      fs.writeFileSync(file, rewritten, "utf8");
+      changed++;
+    }
+  }
+  for (const dir of roots) walk(dir);
+  log(`Android Node (no ICU): Unicode regex literals rewritten in ${changed} server files`);
+}
+
 // ---------- ۲) مونتاژ assets مثل نسخهٔ PC ----------
-function ensureAssets() {
+function ensureAssets(regexTools) {
   const nextDir = path.join(root, ".next");
   if (!fs.existsSync(nextDir)) fail(".next ساخته نشده — ابتدا npm run build را اجرا کنید");
 
@@ -494,6 +532,8 @@ function ensureAssets() {
       /* پکیج حذف‌شده در npm ls — نادیده */
     }
   }
+  prepareServerRegexForAndroid(outNm, regexTools);
+
   // Mineflayer only plays Java Edition, but minecraft-data eagerly imports
   // bedrock/common/features.json even for Java. Strip only unused version data.
   const mcData = path.join(outNm, "minecraft-data", "minecraft-data");
@@ -519,7 +559,11 @@ function ensureAssets() {
 }
 
 ensureLibnode();
-ensureAssets();
+const regexTools = checkOnly ? null : {
+  rewritePattern: (await import("regexpu-core")).default,
+  tokenizer: (await import("acorn")).tokenizer,
+};
+ensureAssets(regexTools);
 log("پایان موفقیت‌آمیز");
 }
 

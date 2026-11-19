@@ -7,6 +7,7 @@ package com.peak.app
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import java.io.File
 import java.util.zip.ZipInputStream
@@ -76,7 +77,11 @@ object AssetsInstaller {
 
     private fun currentVersion(context: Context): String = try {
         val pi = context.packageManager.getPackageInfo(context.packageName, 0)
-        pi.versionName ?: "unknown"
+        // Include the APK build number so test builds that share versionName
+        // do not keep running stale extracted code after an update.
+        @Suppress("DEPRECATION")
+        val build = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pi.longVersionCode else pi.versionCode.toLong()
+        "${pi.versionName ?: "unknown"}+$build"
     } catch (e: PackageManager.NameNotFoundException) {
         "unknown"
     }
