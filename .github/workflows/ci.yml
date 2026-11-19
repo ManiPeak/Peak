@@ -111,7 +111,7 @@ jobs:
           trap 'rm -f "$RUNTIME"' EXIT
           unzip -p "$APK" assets/peak-runtime.zip > "$RUNTIME"
           ENTRIES=$(unzip -Z1 "$RUNTIME")
-          for ENTRY in .next/BUILD_ID node_modules/next/dist/bin/next \
+          for ENTRY in .next/BUILD_ID peak-android-server.cjs \
             node_modules/better-sqlite3/build/Release/better_sqlite3.node \
             node_modules/minecraft-data/minecraft-data/data/bedrock/common/features.json; do
             grep -Fxq "$ENTRY" <<< "$ENTRIES" || { echo "::error::Runtime archive missing $ENTRY"; exit 1; }

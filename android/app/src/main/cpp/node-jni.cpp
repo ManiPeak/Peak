@@ -1,8 +1,7 @@
 /*
  * Peak Android — پل JNI برای اجرای کامل Node.js داخل فرآیند اپ (عین نسخهٔ PC).
  *
- * همان کاری را می‌کند که در ویندوز: node node_modules/next/dist/bin/next start
- * یعنی فراخوانی node::Start از libnode (nodejs-mobile 18.20.4 — MODULE_VERSION 108).
+ * اجرای اسکریپت راه‌انداز سرور با node::Start از libnode (Node 18.20.4).
  */
 #include <jni.h>
 #include <node.h>

@@ -145,7 +145,7 @@ Next.js و بات ماینکرفت و دیتابیس همگی **روی خود گ
 │  پوستهٔ Kotlin (MainActivity + NodeService)                │
 │    └─ پل JNI (node-jni.cpp) → node::Start                 │
 │         └─ libnode.so (nodejs-mobile 18.20.4 — arm64)      │
-│              └─ node node_modules/next/dist/bin/next start │
+│              └─ node peak-android-server.cjs │
 │                   └─ سرور Next روی 127.0.0.1:3784          │
 │                        ├─ بات ماینکرفت + AI + SQLite       │
 │                        └─ WebView ← http://127.0.0.1:3784  │
@@ -199,7 +199,7 @@ bash scripts/build-android-native.sh "$PEAK_ABIS"
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / «بسته با برنامهٔ نصب‌شده تداخل دارد» | امضای دو نسخه متفاوت است (مثلاً `v1.0.3` یا نسخهٔ آزمایشی در برابر ریلیز رسمی). برای نصب روی نسخهٔ قبلی همان کلید لازم است. اگر در دسترس نیست، اول از داده‌ها بکاپ بگیرید و بعد نسخهٔ قدیمی را حذف کنید. **حذف برنامه ممکن است داده‌های محلی را پاک کند.** |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` / «با گوشی سازگار نیست» | ریلیز گوشی فقط برای `arm64-v8a` است؛ `x86_64` فقط برای آزمون شبیه‌ساز است. حداقل اندروید ۷ (API 24) لازم است. `adb shell getprop ro.product.cpu.abilist` معماری‌های دستگاه را نشان می‌دهد. |
 | دستگاه ۱۶ کیلوبایتی | `libnode.so` فعلی با هم‌ترازی ۴ کیلوبایت ساخته شده است. سازگاری بومی ۱۶ کیلوبایت تأیید نشده و نصب یا اجرا ممکن است به حالت سازگاری سیستم‌عامل نیاز داشته باشد. `adb shell getconf PAGE_SIZE` اندازهٔ صفحهٔ حافظه را نشان می‌دهد. |
-| نصب شد، ولی باز نمی‌شود | فضای خالی را بررسی کنید. اگر خطا ادامه داشت، مدل گوشی، نسخهٔ اندروید و پیام دقیق خطا را همراه `adb logcat -d -s PeakActivity PeakAssets PeakNodeService PeakNode AndroidRuntime` گزارش کنید. |
+| نصب شد، ولی باز نمی‌شود | فضای خالی را بررسی کنید. اگر خطا ادامه داشت، کد `PEAK-…` روی صفحه، مدل گوشی و نسخهٔ اندروید را همراه `adb logcat -d -s PeakActivity PeakAssets PeakNodeService PeakNode AndroidRuntime` گزارش کنید. |
 
 در صورت نیاز، برای فعال ماندن بات می‌توانید بهینه‌سازی باتری Peak را غیرفعال کنید. Node.js موبایل 18.20.4 پایان پشتیبانی را پشت سر گذاشته است؛ ارتقای آن و سازگاری بومی ۱۶ کیلوبایت جداگانه لازم است.
 

@@ -15,7 +15,9 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Process
 import android.util.Log
+import java.io.File
 
 class NodeService : Service() {
 
@@ -38,26 +40,29 @@ class NodeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startAsForeground()
         if (nodeThread == null) {
-            val workdir = filesDir.absolutePath + "/app"
-            // دقیقاً همان آرگومان‌های electron/main.js: node node_modules/next/dist/bin/next start -p 3784
-            val args = arrayOf(
-                "node",
-                "node_modules/next/dist/bin/next",
-                "start",
-                "-p", "3784",
-                "-H", "127.0.0.1"
-            )
+            val workdir = File(filesDir, "app")
+            val startup = File(cacheDir, STARTUP_STATUS)
             nodeThread = Thread({
-                Log.i(TAG, "starting embedded node runtime in $workdir")
                 try {
-                    val rc = startNodeWithArguments(args, workdir)
-                    Log.e(TAG, "node runtime exited: $rc")
-                } catch (t: Throwable) {
-                    Log.e(TAG, "node runtime crashed", t)
+                    startup.writeText("node")
+                    System.loadLibrary("peaknode")
+                    val args = arrayOf("node", File(workdir, "peak-android-server.cjs").path, startup.path)
+                    val rc = startNodeWithArguments(args, workdir.path)
+                    Log.e(TAG, "Node runtime returned $rc")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Node runtime failed", e)
+                } catch (e: LinkageError) {
+                    Log.e(TAG, "Node native libraries could not load", e)
+                } finally {
+                    runCatching { startup.writeText("error:node") }
+                    // node::Start is one-shot. Kill only the private runtime process,
+                    // so MainActivity can display the error and start a fresh one on Retry.
+                    stopSelf()
+                    Process.killProcess(Process.myPid())
                 }
             }, "peak-node").also { it.start() }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -102,8 +107,6 @@ class NodeService : Service() {
         private const val CHANNEL_ID = "peak-service"
         private const val NOTIF_ID = 1001
 
-        init {
-            System.loadLibrary("peaknode")
-        }
+        const val STARTUP_STATUS = "peak-runtime-startup"
     }
 }

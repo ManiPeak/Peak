@@ -43,7 +43,7 @@ object AssetsInstaller {
 
     private fun hasRuntime(appDir: File) = listOf(
         ".next/BUILD_ID",
-        "node_modules/next/dist/bin/next",
+        "peak-android-server.cjs",
         "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
     ).all { File(appDir, it).isFile }
 

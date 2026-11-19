@@ -348,6 +348,61 @@ function ensureLibnode() {
   log("libnode + هدرها استخراج شدند");
 }
 
+// Use Next's production server API directly: its CLI assumes it is the main
+// process and manages process titles, shutdown signals and telemetry itself.
+const androidServer = String.raw`"use strict";
+const fs = require("node:fs");
+const http = require("node:http");
+const host = "127.0.0.1";
+const port = 3784;
+const statusFile = process.argv[2];
+let stage = "node";
+
+function status(value) {
+  if (!statusFile) return;
+  fs.writeFileSync(statusFile + ".tmp", value);
+  fs.renameSync(statusFile + ".tmp", statusFile);
+}
+
+function fail(error) {
+  console.error("Peak Android failed at " + stage, error);
+  try { status("error:" + stage); } catch (writeError) { console.error(writeError); }
+  process.exit(1);
+}
+
+async function start() {
+  process.env.NEXT_TELEMETRY_DISABLED = "1";
+  stage = "sqlite";
+  status(stage);
+  const db = new (require("better-sqlite3"))(":memory:");
+  try { db.prepare("SELECT 1").get(); } finally { db.close(); }
+
+  stage = "next";
+  status(stage);
+  const app = require("next")({ dev: false, dir: __dirname, hostname: host, port });
+  await app.prepare();
+  const handle = app.getRequestHandler();
+
+  stage = "listen";
+  status(stage);
+  const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/__peak_ready") {
+      res.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
+      res.end("peak-android-ready");
+      return;
+    }
+    Promise.resolve(handle(req, res)).catch((err) => {
+      console.error("Peak Next request failed", err);
+      if (!res.headersSent) res.writeHead(500);
+      res.end();
+    });
+  });
+  server.once("error", fail);
+  server.listen(port, host, () => status("ready"));
+}
+start().catch(fail);
+`;
+
 // ---------- ۲) مونتاژ assets مثل نسخهٔ PC ----------
 function ensureAssets() {
   const nextDir = path.join(root, ".next");
@@ -373,6 +428,7 @@ function ensureAssets() {
   for (const f of ["package.json", "next.config.mjs"]) {
     fs.copyFileSync(path.join(root, f), path.join(assetsDir, f));
   }
+  fs.writeFileSync(path.join(assetsDir, "peak-android-server.cjs"), androidServer, "utf8");
   // ۲-۲) public و .next
   fs.cpSync(path.join(root, "public"), path.join(assetsDir, "public"), { recursive: true });
   fs.cpSync(nextDir, path.join(assetsDir, ".next"), {

@@ -30,6 +30,7 @@
 
         <service
             android:name=".NodeService"
+            android:process=":runtime"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

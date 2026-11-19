@@ -27,11 +27,14 @@ if [[ "${1:-}" == --smoke-test ]]; then
   adb install "$2"
   adb shell input keyevent KEYCODE_WAKEUP
   adb shell wm dismiss-keyguard
-  adb shell am start -W -n com.peak.app/.MainActivity
+  launch=$(adb shell am start -W -n com.peak.app/.MainActivity)
+  printf '%s\n' "$launch"
+  grep -Eq 'Status: ok' <<< "$launch" || { echo '::error::Android did not start MainActivity'; exit 1; }
   adb forward "tcp:$ADB_PORT" tcp:3784
   for ((i=0; i<90; i++)); do
-    if curl --silent --fail --max-time 2 "http://127.0.0.1:$ADB_PORT/api/health" | jq -e '.ok == true' >/dev/null &&
-       curl --silent --fail --max-time 2 "http://127.0.0.1:$ADB_PORT/" >/dev/null; then
+    if [[ $(curl --noproxy '*' --silent --fail --max-time 2 "http://127.0.0.1:$ADB_PORT/__peak_ready") == peak-android-ready ]] &&
+       curl --noproxy '*' --silent --fail --max-time 2 "http://127.0.0.1:$ADB_PORT/api/health" | jq -e '.ok == true' >/dev/null &&
+       curl --noproxy '*' --silent --fail --max-time 2 "http://127.0.0.1:$ADB_PORT/" >/dev/null; then
       echo 'APK installed and Next.js/SQLite are healthy.'
       exit 0
     fi

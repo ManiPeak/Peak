@@ -29,7 +29,7 @@ android {
         applicationId "com.peak.app"
         // نام نسخه از package.json
         versionName rootPkg.version.toString()
-        versionCode 5
+        versionCode 6
         minSdk 24
         targetSdk 34
 
