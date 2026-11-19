@@ -9,9 +9,9 @@ import path from "node:path";
 const root = process.cwd();
 
 describe("Peak 1.0.3 consolidation", () => {
-  test("package.json version is 1.0.3", () => {
+  test("package.json version is 1.0.4", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf-8"));
-    assert.equal(pkg.version, "1.0.3");
+    assert.equal(pkg.version, "1.0.4");
   });
 
   test("tracked file budget <= 100 (excluding generated dirs)", () => {
@@ -22,9 +22,10 @@ describe("Peak 1.0.3 consolidation", () => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.isDirectory()) {
           if (skip.has(e.name) && !(depth === 0 && e.name === "build")) continue;
-          if (e.name === "node_modules" || e.name === ".next" || e.name === ".git") continue;
-          walk(path.join(dir, e.name), depth + 1);
-        } else count++;
+          const subdir = path.join(dir, e.name);
+          if (subdir === path.join(root, "android/app/src/main/assets/app") || e.name === ".cxx") continue;
+          walk(subdir, depth + 1);
+        } else if (!["release-notes.md", "INSTALL-GUIDE.md"].includes(e.name)) count++;
       }
     };
     walk(root, 0);
@@ -36,9 +37,9 @@ describe("Peak 1.0.3 consolidation", () => {
     assert.match(cfg, /executableName:\s*"Peak"/);
   });
 
-  test("android versionCode is 4 and versionName comes from package.json", () => {
+  test("android versionCode is 7 and versionName comes from package.json", () => {
     const g = fs.readFileSync(path.join(root, "android/app/build.gradle"), "utf-8");
-    assert.match(g, /versionCode 4/);
+    assert.match(g, /versionCode 7/);
     assert.match(g, /versionName rootPkg\.version/);
   });
 

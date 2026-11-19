@@ -1,6 +1,6 @@
 {
   "name": "peak",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Peak — دستیار هوش مصنوعی شخصی Local-First با حافظهٔ دائمی، صوت فارسی و پل ماینکرفت",
   "main": "electron/main.js",
@@ -41,6 +41,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "acorn": "8.19.0",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.30.0",
     "electron": "^33.2.1",
@@ -48,6 +49,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.1.3",
     "postcss": "^8.4.49",
+    "regexpu-core": "6.5.4",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

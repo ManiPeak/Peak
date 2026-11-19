@@ -13,20 +13,27 @@ plugins {
 }
 
 def rootPkg = new JsonSlurper().parse(file("../../package.json"))
+def releaseSigning = ["PEAK_KEYSTORE", "PEAK_STORE_PASSWORD", "PEAK_KEY_ALIAS", "PEAK_KEY_PASSWORD"]
+        .collectEntries { [(it): System.getenv(it)] }
+def hasReleaseKey = releaseSigning.values().every { it }
+if (!hasReleaseKey && (releaseSigning.values().any { it } || project.hasProperty("peakRequireReleaseSigning"))) {
+    throw new GradleException("Set all four PEAK_* signing variables for an official APK.")
+}
 
 android {
     namespace "com.peak.app"
     compileSdk 34
+    ndkVersion "26.3.11579264"
 
     defaultConfig {
         applicationId "com.peak.app"
-        // نسخه از package.json (1.0.3) — هیچ هاردکدی نیست
+        // نام نسخه از package.json
         versionName rootPkg.version.toString()
-        versionCode 4
+        versionCode 7
         minSdk 24
         targetSdk 34
 
-        // فقط arm64-v8a (گوشی‌های امروزی) — برای شبیه‌ساز: -PpeakAbis=x86_64
+        // انتشار: arm64-v8a؛ آزمون شبیه‌ساز: -PpeakAbis=x86_64
         def abis = (findProperty("peakAbis") ?: "arm64-v8a").toString().split(",")
         ndk {
             abiFilters (*abis)
@@ -47,13 +54,30 @@ android {
         }
     }
 
+    sourceSets {
+        // Ship one archive, not tens of thousands of separately listed APK assets.
+        main.assets.setSrcDirs([layout.buildDirectory.dir("generated/peak-runtime-assets")])
+    }
+    androidResources {
+        noCompress += "zip"
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            official {
+                storeFile file(releaseSigning.PEAK_KEYSTORE)
+                storePassword releaseSigning.PEAK_STORE_PASSWORD
+                keyAlias releaseSigning.PEAK_KEY_ALIAS
+                keyPassword releaseSigning.PEAK_KEY_PASSWORD
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-            // تا قبل از تنظیم keystore در Secrets، خروجی release هم با کلید debug امضا می‌شود
-            // تا دست‌کم APK قابل نصب باشد (گزارش‌شده در docs/ANDROID.md)
-            signingConfig signingConfigs.debug
+            signingConfig = hasReleaseKey ? signingConfigs.official : signingConfigs.debug
         }
     }
 
@@ -67,8 +91,20 @@ android {
 
     packagingOptions {
         jniLibs {
-            // libnode.so بزرگ است (۶۲ مگ) — فشرده نشود تا بارگذاری mmap سریع بماند
+            // کتابخانه‌ها هنگام نصب از APK استخراج می‌شوند
             useLegacyPackaging = true
         }
     }
 }
+
+// AAPT never filters .next or other runtime paths inside this archive.
+def packPeakRuntime = tasks.register("packPeakRuntime", Zip) {
+    from layout.projectDirectory.dir("src/main/assets/app")
+    exclude "data/**", "tmp/**", ".installed-version"
+    archiveFileName = "peak-runtime.zip"
+    destinationDirectory = layout.buildDirectory.dir("generated/peak-runtime-assets")
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+    includeEmptyDirs = false
+}
+tasks.named("preBuild").configure { dependsOn(packPeakRuntime) }

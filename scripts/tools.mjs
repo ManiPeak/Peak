@@ -348,8 +348,101 @@ function ensureLibnode() {
   log("libnode + هدرها استخراج شدند");
 }
 
+// Use Next's production server API directly: its CLI assumes it is the main
+// process and manages process titles, shutdown signals and telemetry itself.
+const androidServer = String.raw`"use strict";
+const fs = require("node:fs");
+const http = require("node:http");
+const host = "127.0.0.1";
+const port = 3784;
+const statusFile = process.argv[2];
+let stage = "node";
+
+function status(value) {
+  if (!statusFile) return;
+  fs.writeFileSync(statusFile + ".tmp", value);
+  fs.renameSync(statusFile + ".tmp", statusFile);
+}
+
+function fail(error) {
+  console.error("Peak Android failed at " + stage, error);
+  try { status("error:" + stage); } catch (writeError) { console.error(writeError); }
+  process.exit(1);
+}
+
+async function start() {
+  process.env.NEXT_TELEMETRY_DISABLED = "1";
+  stage = "sqlite";
+  status(stage);
+  const db = new (require("better-sqlite3"))(":memory:");
+  try { db.prepare("SELECT 1").get(); } finally { db.close(); }
+
+  stage = "next";
+  status(stage);
+  const app = require("next")({ dev: false, dir: __dirname, hostname: host, port });
+  await app.prepare();
+  const handle = app.getRequestHandler();
+
+  stage = "listen";
+  status(stage);
+  const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/__peak_ready") {
+      res.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
+      res.end("peak-android-ready");
+      return;
+    }
+    Promise.resolve(handle(req, res)).catch((err) => {
+      console.error("Peak Next request failed", err);
+      if (!res.headersSent) res.writeHead(500);
+      res.end();
+    });
+  });
+  server.once("error", fail);
+  server.listen(port, host, () => status("ready"));
+}
+start().catch(fail);
+`;
+
+// Android's embedded Node is built without ICU. Its V8 rejects Unicode property
+// escapes at parse time. Rewrite real server-side regex literals only (not strings,
+// comments, or browser bundles), preserving the /u flag and Unicode matching.
+function prepareServerRegexForAndroid(outNm, { rewritePattern, tokenizer }) {
+  const propertyEscape = /(?<!\\)\\[pP]\{/;
+  const roots = [path.join(outNm, "next", "dist"), path.join(assetsDir, ".next", "server")];
+  let changed = 0;
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(file);
+        continue;
+      }
+      if (!entry.isFile() || !/\.[cm]?js$/.test(entry.name)) continue;
+      const source = fs.readFileSync(file, "utf8");
+      if (!propertyEscape.test(source)) continue;
+      const replacements = [];
+      for (const token of tokenizer(source, { ecmaVersion: "latest", sourceType: "module" })) {
+        if (token.type.label !== "regexp") continue;
+        const { pattern, flags } = token.value;
+        if (!flags.includes("u") || !propertyEscape.test(pattern)) continue;
+        const compatible = rewritePattern(pattern, flags, { unicodePropertyEscapes: "transform" });
+        replacements.push({ start: token.start, end: token.end, text: `/${compatible}/${flags}` });
+      }
+      if (!replacements.length) continue;
+      let rewritten = source;
+      for (const { start, end, text } of replacements.reverse()) {
+        rewritten = rewritten.slice(0, start) + text + rewritten.slice(end);
+      }
+      fs.writeFileSync(file, rewritten, "utf8");
+      changed++;
+    }
+  }
+  for (const dir of roots) walk(dir);
+  log(`Android Node (no ICU): Unicode regex literals rewritten in ${changed} server files`);
+}
+
 // ---------- ۲) مونتاژ assets مثل نسخهٔ PC ----------
-function ensureAssets() {
+function ensureAssets(regexTools) {
   const nextDir = path.join(root, ".next");
   if (!fs.existsSync(nextDir)) fail(".next ساخته نشده — ابتدا npm run build را اجرا کنید");
 
@@ -373,6 +466,7 @@ function ensureAssets() {
   for (const f of ["package.json", "next.config.mjs"]) {
     fs.copyFileSync(path.join(root, f), path.join(assetsDir, f));
   }
+  fs.writeFileSync(path.join(assetsDir, "peak-android-server.cjs"), androidServer, "utf8");
   // ۲-۲) public و .next
   fs.cpSync(path.join(root, "public"), path.join(assetsDir, "public"), { recursive: true });
   fs.cpSync(nextDir, path.join(assetsDir, ".next"), {
@@ -438,12 +532,21 @@ function ensureAssets() {
       /* پکیج حذف‌شده در npm ls — نادیده */
     }
   }
-  // مثل build-exe.ps1: bedrock/doc/tools از minecraft-data حذف می‌شوند
-  for (const sub of ["data/bedrock", "doc", "tools"]) {
-    const p = path.join(outNm, "minecraft-data", "minecraft-data", sub);
-    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  prepareServerRegexForAndroid(outNm, regexTools);
+
+  // Mineflayer only plays Java Edition, but minecraft-data eagerly imports
+  // bedrock/common/features.json even for Java. Strip only unused version data.
+  const mcData = path.join(outNm, "minecraft-data", "minecraft-data");
+  const bedrock = path.join(mcData, "data", "bedrock");
+  for (const name of fs.readdirSync(bedrock)) {
+    if (/^\d/.test(name) || name === "latest") fs.rmSync(path.join(bedrock, name), { recursive: true, force: true });
   }
-  log("minecraft-data: bedrock/doc/tools حذف شد (الگوی build-exe.ps1)");
+  for (const name of ["doc", "tools"]) fs.rmSync(path.join(mcData, name), { recursive: true, force: true });
+  execFileSync(process.execPath, ["-e", "require('./node_modules/mineflayer')"], {
+    cwd: assetsDir,
+    stdio: "inherit",
+  });
+  log("minecraft-data: metadata kept; Java client import verified");
   // better-sqlite3 باید برای اندروید کراس‌کامپایل شود (scripts/build-android-native.sh)
   const bsqlBuild = path.join(outNm, "better-sqlite3", "build", "Release", "better_sqlite3.node");
   if (!fs.existsSync(bsqlBuild)) {
@@ -456,7 +559,11 @@ function ensureAssets() {
 }
 
 ensureLibnode();
-ensureAssets();
+const regexTools = checkOnly ? null : {
+  rewritePattern: (await import("regexpu-core")).default,
+  tokenizer: (await import("acorn")).tokenizer,
+};
+ensureAssets(regexTools);
 log("پایان موفقیت‌آمیز");
 }
 
@@ -510,10 +617,18 @@ ${section}
 |---|---|
 | **Peak-Setup-${version}.exe** | نصب‌کنندهٔ ویندوز — در نصب فقط «محل نصب» را انتخاب کن |
 | **Peak-Portable-${version}.exe** | بدون نصب (فلش / سیستم مهمان) |
+| **Peak-${version}.apk** | اندروید: فایل نصبی برای گوشی‌های arm64-v8a (اندروید ۷ یا بالاتر) |
+| **Peak-${version}.apk.sha256** | جمع کنترلی برای بررسی سلامت دانلود APK |
+| **Peak-${version}.zip** | فقط سورس؛ فایل نصبی نیست |
 | **INSTALL-GUIDE.md** | راهنمای کامل نصب و عیب‌یابی |
 
 نام‌های ثابت **Peak-Setup-Latest.exe** / **Peak-Portable-Latest.exe** همیشه آخرین نسخه‌اند:
 <https://github.com/ManiPeak/Peak/releases/latest>
+
+## نصب اندروید
+
+* فایل APK را از بخش Assets بگیرید. رانتایم فعلی برای صفحهٔ حافظهٔ ۴ کیلوبایت ساخته شده؛ سازگاری بومی با دستگاه ۱۶ کیلوبایتی تأیید نشده است.
+* در صورت خطای تداخل امضا با نسخهٔ قدیمی/آزمایشی، قبل از حذف نسخهٔ قدیمی از داده‌های برنامه بکاپ بگیرید. حذف برنامه ممکن است داده‌های محلی را پاک کند.
 
 ## ⚠️ هشدارهای ویندوز (طبیعی است)
 

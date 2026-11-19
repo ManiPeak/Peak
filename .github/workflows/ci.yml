@@ -1,177 +1,183 @@
-# Peak 1.0.3 — Unified CI (verify + Windows EXE + Android APK + source ZIP)
-# Merged from build-windows.yml + build-android.yml into ONE valid workflow (100-file budget).
-# Script paths updated for the 1.0.3 consolidation: scripts/tools.mjs <package-check|prepare-android-assets|release-notes>
 name: Peak CI
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ['v*']
   pull_request:
     branches: [main]
-  release:
-    types: [published]
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  NODE_VERSION: '22'
 
 jobs:
   verify:
-    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: Install dependencies
-        run: ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Test
-        run: npm test
-      - name: Build Next.js app
-        run: npm run build
-
-  source-zip:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Make source ZIP from tag
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          git archive --format=zip --prefix="Peak-$VERSION/" -o "Peak-$VERSION.zip" HEAD
-          ls -lh "Peak-$VERSION.zip"
-      - name: Attach source ZIP to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: Peak-${{ env.VERSION }}.zip
-          overwrite_files: true
-          fail_on_unmatched_files: true
+      - run: ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
 
   build-apk:
-    if: github.event_name != 'release'
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    env:
+      PEAK_ABIS: ${{ matrix.abi }}
+      OFFICIAL_APK: ${{ github.event_name == 'push' && github.ref_type == 'tag' && matrix.abi == 'arm64-v8a' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: Install dependencies
-        run: ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
-      - name: Build Next.js app
-        run: npm run build
-      - name: Prepare Android assets (libnode + app bundle)
-        run: node scripts/tools.mjs prepare-android-assets
-      - name: Setup Python 3.11 (old nodejs-mobile-gyp breaks on 3.12+)
-        uses: actions/setup-python@v5
+      - run: ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+      - run: npm run build
+      - run: node scripts/tools.mjs prepare-android-assets
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Setup Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26d
-          link-as-latest: true
-      - name: Cross-compile better-sqlite3 (arm64-v8a)
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: bash scripts/build-android-native.sh arm64-v8a
-      - uses: actions/setup-java@v4
+          python-version: '3.11'
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          gradle-version: "8.7"
-      - name: Assemble APK
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 cmake;3.22.1'
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          link-to-sdk: true
+      - name: Cross-compile SQLite for Android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-native.sh "$PEAK_ABIS"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Assemble official APK
+        if: env.OFFICIAL_APK == 'true'
         working-directory: android
+        env:
+          PEAK_KEYSTORE_BASE64: ${{ secrets.PEAK_ANDROID_KEYSTORE_BASE64 }}
+          PEAK_STORE_PASSWORD: ${{ secrets.PEAK_ANDROID_STORE_PASSWORD }}
+          PEAK_KEY_ALIAS: ${{ secrets.PEAK_ANDROID_KEY_ALIAS }}
+          PEAK_KEY_PASSWORD: ${{ secrets.PEAK_ANDROID_KEY_PASSWORD }}
         run: |
-          gradle assembleRelease --stacktrace 2>&1 | tee /tmp/peak-gradle.log
-          code=${PIPESTATUS[0]}
-          if [ "$code" -ne 0 ]; then
-            {
-              grep -A16 -m1 "startup failed:" /tmp/peak-gradle.log || true
-              grep -iE "error:|FAILURE|Exception|Could not|failed" /tmp/peak-gradle.log | head -8 || true
-            } | while IFS= read -r line; do echo "::error::gradle: $line"; done || true
-            exit "$code"
+          if [[ -z "$PEAK_KEYSTORE_BASE64" || -z "$PEAK_STORE_PASSWORD" || -z "$PEAK_KEY_ALIAS" || -z "$PEAK_KEY_PASSWORD" ]]; then
+            echo '::error::Official APK requires the four PEAK_ANDROID_* signing secrets (see docs/README.md).'
+            exit 1
           fi
-      - name: Name APK from package.json
+          umask 077
+          export PEAK_KEYSTORE="$(mktemp "$RUNNER_TEMP/peak-keystore.XXXXXX")"
+          trap 'rm -f "$PEAK_KEYSTORE"' EXIT
+          printf '%s' "$PEAK_KEYSTORE_BASE64" | base64 --decode > "$PEAK_KEYSTORE"
+          unset PEAK_KEYSTORE_BASE64
+          gradle --no-daemon assembleRelease -PpeakAbis="$PEAK_ABIS" -PpeakRequireReleaseSigning --stacktrace
+      - name: Assemble test APK
+        if: env.OFFICIAL_APK != 'true'
+        working-directory: android
+        run: gradle assembleRelease -PpeakAbis="$PEAK_ABIS" --stacktrace
+      - name: Verify and name APK
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          cp android/app/build/outputs/apk/release/app-release.apk "Peak-$VERSION.apk"
-          echo "APK_NAME=Peak-$VERSION.apk" >> "$GITHUB_ENV"
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+          APK="$PWD/android/app/build/outputs/apk/release/app-release.apk"
+          TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$TOOLS/zipalign" -c 4 "$APK"
+          BADGING=$("$TOOLS/aapt" dump badging "$APK")
+          grep -F "package: name='com.peak.app'" <<< "$BADGING" | grep -F "versionName='$VERSION'"
+          grep -Ex "native-code: '$PEAK_ABIS' *" <<< "$BADGING"
+          ENTRIES=$(unzip -Z1 "$APK")
+          for ENTRY in "lib/$PEAK_ABIS/libnode.so" "lib/$PEAK_ABIS/libpeaknode.so" "lib/$PEAK_ABIS/libc++_shared.so"; do
+            grep -Fxq "$ENTRY" <<< "$ENTRIES" || { echo "::error::APK missing $ENTRY"; exit 1; }
+          done
+          RUNTIME=$(mktemp --suffix=.zip)
+          trap 'rm -f "$RUNTIME"' EXIT
+          unzip -p "$APK" assets/peak-runtime.zip > "$RUNTIME"
+          ENTRIES=$(unzip -Z1 "$RUNTIME")
+          for ENTRY in .next/BUILD_ID peak-android-server.cjs \
+            node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+            node_modules/minecraft-data/minecraft-data/data/bedrock/common/features.json; do
+            grep -Fxq "$ENTRY" <<< "$ENTRIES" || { echo "::error::Runtime archive missing $ENTRY"; exit 1; }
+          done
+          if [[ "$OFFICIAL_APK" == true ]]; then
+            NAME="Peak-$VERSION.apk"
+          else
+            NAME="Peak-$VERSION-$PEAK_ABIS-test.apk"
+          fi
+          cp "$APK" "$NAME"
+          echo "APK_NAME=$NAME" >> "$GITHUB_ENV"
+      - name: Enable KVM for Android emulator
+        if: matrix.abi == 'x86_64'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch on Android 14 emulator
+        if: matrix.abi == 'x86_64'
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: Peak-Android-APK
+          api-level: 34
+          arch: x86_64
+          disable-animations: true
+          script: bash scripts/build-android-native.sh --smoke-test "$APK_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Peak-Android-${{ matrix.abi }}
           path: ${{ env.APK_NAME }}
           if-no-files-found: error
-      - name: Attach APK to GitHub Release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ env.APK_NAME }}
-          overwrite_files: true
-          fail_on_unmatched_files: true
 
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 60
-    concurrency:
-      group: build-windows-release
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: Build EXE (all-in-one script)
+      - name: Build EXE
         shell: pwsh
         run: ./scripts/build-exe.ps1
-      - name: Make Latest names
-        if: always()
+      - name: Verify packaged dependencies
+        shell: pwsh
+        working-directory: dist/win-unpacked/resources/app
+        run: |
+          node -e "require('./node_modules/mineflayer')"
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Minecraft dependencies cannot be imported' }
+      - name: Collect release files
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $s = @(Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue |
-                 Where-Object { $_.Name -match "(?i)setup" -and $_.Name -notmatch "(?i)latest" })
-          $p = @(Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue |
-                 Where-Object { $_.Name -match "(?i)portable" -and $_.Name -notmatch "(?i)latest" })
-          if ($s.Count -gt 0) {
-            Copy-Item $s[0].FullName "dist/Peak-Setup-Latest.exe" -Force
-            Write-Host ("Latest setup  = " + $s[0].Name + "  -> dist/Peak-Setup-Latest.exe")
-          } else {
-            Write-Host "::warning::هیچ فایل Setup ای در dist ساخته نشد — Peak-Setup-Latest.exe ساخته نشد."
+          $version = node -p "require('./package.json').version"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          foreach ($kind in @('Setup', 'Portable')) {
+            $file = "Peak-$kind-$version.exe"
+            if (!(Test-Path "dist/$file")) { throw "Missing $file" }
+            Copy-Item "dist/$file" "release/$file"
+            Copy-Item "dist/$file" "release/Peak-$kind-Latest.exe"
           }
-          if ($p.Count -gt 0) {
-            Copy-Item $p[0].FullName "dist/Peak-Portable-Latest.exe" -Force
-            Write-Host ("Latest portable = " + $p[0].Name + "  -> dist/Peak-Portable-Latest.exe")
-          } else {
-            Write-Host "::warning::هیچ فایل Portable ای در dist ساخته نشد — Peak-Portable-Latest.exe ساخته نشد."
-          }
-      - name: Package check (resources/node/node.exe + .next/BUILD_ID)
-        if: always()
-        shell: pwsh
-        run: |
-          node scripts/tools.mjs package-check 2>&1 | Tee-Object -FilePath package-check.txt
-          Write-Host "---- package-check.txt ----"
-          Get-Content package-check.txt -ErrorAction SilentlyContinue | Select-Object -Last 40
-      - name: Upload EXEs
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Peak-Windows-EXE
-          path: dist/*.exe
-          if-no-files-found: warn
-      - name: Upload build log
+          path: release/*.exe
+          if-no-files-found: error
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -179,29 +185,41 @@ jobs:
           path: |
             dist-log.txt
             npm-log.txt
-            package-check.txt
           if-no-files-found: ignore
-      - name: Release notes + install guide
-        if: always()
-        shell: pwsh
-        run: |
-          node scripts/tools.mjs release-notes
-          Write-Host "---- release-notes.md (head) ----"
-          Get-Content release-notes.md -ErrorAction SilentlyContinue | Select-Object -First 25
-      # انتشار: روی main → ریلیز چرخشی با برچسب latest (و make_latest=true)
-      #          روی tag (مثل v1.0.3) → ریلیز رسمی و مستقل همان نسخه
-      - name: Publish release
-        if: always() && hashFiles('dist/Peak-Setup-Latest.exe') != ''
-        uses: softprops/action-gh-release@v2
+
+  publish-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, build-apk, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
-          name: ${{ github.ref_type == 'tag' && format('Peak {0} — نسخهٔ رسمی', github.ref_name) || 'Peak — نسخهٔ چرخشی (Latest)' }}
-          body_path: release-notes.md
-          make_latest: true
-          overwrite_files: true
-          fail_on_unmatched_files: true
-          files: |
-            dist/Peak-Setup-*.exe
-            dist/Peak-Portable-*.exe
-            release-notes.md
-            INSTALL-GUIDE.md
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: Peak-Android-arm64-v8a
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: Peak-Windows-EXE
+          path: release
+      - name: Prepare release package
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          [[ "$GITHUB_REF_NAME" == "v$VERSION" ]] || { echo '::error::Tag does not match package.json'; exit 1; }
+          test -s "release/Peak-$VERSION.apk"
+          git archive --format=zip --prefix="Peak-$VERSION/" -o "release/Peak-$VERSION.zip" HEAD
+          node scripts/tools.mjs release-notes
+          cp INSTALL-GUIDE.md release/
+          (cd release && sha256sum "Peak-$VERSION.apk" > "Peak-$VERSION.apk.sha256")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Publish complete GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft \
+            --title "Peak $GITHUB_REF_NAME" --notes-file release-notes.md release/*
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

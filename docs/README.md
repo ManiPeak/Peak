@@ -88,15 +88,7 @@
 
 ### ساخت خودکار (پیشنهادی)
 
-با هر `push` روی `main`، ورک‌فلوی **Build Windows EXE** در گیت‌هاب خودش همه‌کار را می‌کند:
-
-1. `scripts/build-exe.ps1` را اجرا می‌کند (نصب وابستگی ← بیلد Next ← Node قابل‌حمل ← الکترون‌بیلدر)
-2. نام‌های ثابت `Peak-Setup-Latest.exe` و `Peak-Portable-Latest.exe` را می‌سازد
-3. با `scripts/package-check.mjs` محتوای بسته را بازرسی می‌کند و برای هر موردِ نبوده
-   **هشدار** می‌دهد (روی صفحهٔ run و در خلاصهٔ اجرا)
-4. فایل‌ها را در تب **Actions** (Artifacts) می‌گذارد و در **ریلیز چرخشی** با برچسب
-   `latest` منتشر می‌کند (`make_latest` روشن) — پس
-   `…/releases/latest/download/Peak-Setup-Latest.exe` همیشه آخرین نسخه است.
+ورک‌فلوی **Peak CI** در GitHub با `scripts/build-exe.ps1` نسخهٔ ویندوز را می‌سازد و هر دو فایل نصب‌کننده و پرتابل را در **Actions → Artifacts** قرار می‌دهد. در [انتشار رسمی](#انتشار-رسمی-peak-در-github)، نسخه‌های شماره‌دار و نام‌های ثابت `Peak-Setup-Latest.exe` و `Peak-Portable-Latest.exe` به ریلیز تأییدشده پیوست می‌شوند.
 
 ### ساخت دستی روی سیستم خودت
 
@@ -153,7 +145,7 @@ Next.js و بات ماینکرفت و دیتابیس همگی **روی خود گ
 │  پوستهٔ Kotlin (MainActivity + NodeService)                │
 │    └─ پل JNI (node-jni.cpp) → node::Start                 │
 │         └─ libnode.so (nodejs-mobile 18.20.4 — arm64)      │
-│              └─ node node_modules/next/dist/bin/next start │
+│              └─ node peak-android-server.cjs │
 │                   └─ سرور Next روی 127.0.0.1:3784          │
 │                        ├─ بات ماینکرفت + AI + SQLite       │
 │                        └─ WebView ← http://127.0.0.1:3784  │
@@ -163,73 +155,53 @@ Next.js و بات ماینکرفت و دیتابیس همگی **روی خود گ
 - **رانتایم Node**: `libnode.so` از بستهٔ npm
   [`nodejs-mobile-react-native@18.20.4`](https://www.npmjs.com/package/nodejs-mobile-react-native)
   (Node 18.20.4 — MODULE_VERSION 108) به‌همراه هدرهای کامل — توسط
-  `scripts/prepare-android-assets.mjs` استخراج می‌شود. هیچ فایل باینری در Git نیست.
+  `node scripts/tools.mjs prepare-android-assets` استخراج می‌شود. هیچ فایل باینری در Git نیست.
 - **نصب اپ روی گوشی**: assets (`.next` + `node_modules` پروداکشن + `package.json` +
-  `next.config.mjs` + `public`) در اولین اجرا به `filesDir/app` استخراج می‌شوند —
+  `next.config.mjs` + `public`) در یک آرشیو داخلی APK قرار می‌گیرند و در اولین اجرا به `filesDir/app` استخراج می‌شوند —
   دقیقاً همان ساختار `resources/app` در ویندوز.
-- **داده‌ها**: دیتابیس SQLite مثل PC در پوشهٔ `data/` زیر filesDir برنامه می‌ماند.
+- **داده‌ها**: دیتابیس SQLite مثل PC در پوشهٔ `data/` زیر `filesDir/app` می‌ماند و استخراج نسخهٔ جدید آن را حذف نمی‌کند.
 - **جلوگیری از خواب**: سرویس پیش‌زمینه + WakeLock تا بات هنگام قفل بودن صفحه زنده بماند.
-- **پالایش‌ها**: عین `scripts/build-exe.ps1` — حذف `minecraft-data/{bedrock,doc,tools}`،
+- **پالایش‌ها**: داده‌های نسخه‌های Bedrock حذف می‌شوند، اما `bedrock/common` که برای بارگذاری بات Java هم لازم است حفظ می‌شود. همچنین پوشه‌های اضافی،
   `test/tests`، `*.md`/`README*`، و `@next/swc-*` و `@img/*` (بیلد-تایم / sharp).
 
 ## ساخت APK
 
 ### راه ۱ — GitHub Actions (توصیه‌شده)
 
-ورک‌فلوی `.github/workflows/build-android.yml` با هر push به main یا تگ `v*` یا
-اجرا دستی:
+ورک‌فلوی `.github/workflows/ci.yml` دو APK مستقل می‌سازد: `arm64-v8a` برای گوشی و `x86_64` برای شبیه‌ساز. در pull request، `main` و اجرای دستی، خروجی آزمایشی `Peak-<version>-<abi>-test.apk` را از بخش **Artifacts** همان اجرا بگیرید و ZIP آرتیفکت را باز کنید. کلید debug ممکن است بین اجراها متفاوت باشد.
 
-1. `npm ci` + `npm run build` (بیلد Next)
-2. `node scripts/prepare-android-assets.mjs` (استخراج libnode + مونتاژ assets)
-3. `scripts/build-android-native.sh arm64-v8a` (کراس‌کامپایل `better-sqlite3` با NDK r26d)
-4. `gradle assembleRelease` (Gradle 8.7 + JDK 17 — بدون نیاز به Gradle wrapper در Git)
-5. آپلود artifact به‌نام `Peak-<version>.apk` (+ پیوست به Release در تگ‌ها)
+CI امضا، شناسهٔ بسته، معماری و وجود فایل‌های ضروری را بررسی می‌کند. در شبیه‌ساز اندروید ۱۴، APK آزمایشی `x86_64` نصب و اجرا می‌شود و `/api/health` باید سلامت Next.js و SQLite را تأیید کند. این آزمون جایگزین تست روی گوشی واقعی ARM نیست.
 
 ### راه ۲ — لوکال
 
-پیش‌نیاز: JDK 17، Android SDK + NDK r26+، Node 22، Gradle 8.7.
+پیش‌نیاز: JDK 17، Android SDK 34، CMake 3.22.1، NDK r26d، Python 3.11، Node 22 و Gradle 8.7.
 
 ```bash
 npm ci && npm run build
-node scripts/prepare-android-assets.mjs
+export PEAK_ABIS=arm64-v8a # برای شبیه‌ساز: x86_64
+node scripts/tools.mjs prepare-android-assets
 export ANDROID_NDK_HOME=~/Android/Sdk/ndk/26.3.11579264
-bash scripts/build-android-native.sh arm64-v8a
-cd android && gradle assembleRelease
-# خروجی: android/app/build/outputs/apk/release/app-release.apk
+bash scripts/build-android-native.sh "$PEAK_ABIS"
+(cd android && gradle assembleRelease -PpeakAbis="$PEAK_ABIS")
+# خروجی آزمایشی: android/app/build/outputs/apk/release/app-release.apk
 ```
 
-نسخهٔ APK به‌صورت خودکار از `package.json` خوانده می‌شود (الان 1.0.2).
+نام نسخه از `package.json` خوانده می‌شود؛ برای هر انتشار مقدار `versionCode` در Gradle هم باید افزایش یابد.
 
 ## نصب روی گوشی
 
-1. فایل `Peak-1.0.3.apk` را از بخش Assets دانلود کنید (یا artifact ورک‌فلو).
-2. روی گوشی: **Settings → Apps → Special access → Install unknown apps** را برای
-   مرورگر/فایل‌منیجر موردنظر فعال کنید.
-3. APK را باز کرده و **Install** بزنید (با کلید debug امضا شده — پیام «unsafe» طبیعی است).
-4. اولین اجرا چند ثانیه طول می‌کشد (استخراج فایل‌ها)؛ بعد رابط Peak بالا می‌آید.
-5. برای باتِ پیوسته، گزینه‌های **Battery optimization → Don't optimize** را برای Peak
-   فعال کنید تا اندروید سرویس را نکشد.
+1. از بخش **Assets** ریلیز رسمی فایل `Peak-<version>.apk` را دانلود کنید، نه `Peak-<version>.zip` یا `Source code.zip`.
+2. در صورت درخواست اندروید، اجازهٔ **Install unknown apps** را فقط به مرورگر یا فایل‌منیجری بدهید که APK را باز می‌کند.
+3. اولین اجرا برای استخراج فایل‌ها به فضای آزاد و کمی زمان نیاز دارد.
 
-## محدودیت‌های صادقانه (NOT TESTED / شناخته‌شده)
-
-| مورد | وضعیت |
+| خطا یا وضعیت | چه کار کنید؟ |
 |---|---|
-| نصب و اجرای APK روی دستگاه واقعی | **NOT TESTED** — در محیط ساخت، شبیه‌ساز/دستگاه اندروید وجود ندارد؛ فقط ساخت در CI اعتبارسنجی می‌شود |
-| کراس‌کامپایل `better-sqlite3` با NDK | **NOT TESTED** در محیط لوکال (NDK موجود نیست) — در CI اجرا می‌شود؛ شناخته‌شده‌ترین نقطهٔ شکست احتمالی است |
-| امضای release واقعی | فعلاً با کلید **debug** (قابل نصب) — keystore باید بعداً در GitHub Secrets تنظیم شود؛ هرگز در Git نیست |
-| رانتایم Node **18.20.4** | آخرین انتشار رسمی nodejs-mobile است ولی Node 18 از ۳۰ آوریل ۲۰۲۵ **EOL** است؛ مسیر ارتقا: بیلدهای جامعه Node 22 (OpenFlun / Sportacandy) |
-| sharp (بهینه‌سازی تصویر Next) | روی اندروید نصب نمی‌شود — Next بدون آن هم کار می‌کند (بهینه‌سازی تصویر غیرفعال) |
-| اندازه | payload فشرده‌نشده ~۴۱۷MB (minecraft-data و next حجیم‌اند) — APK فشرده تخمیناً ~۱۲۰–۱۸۰MB؛ `libnode.so` به‌تنهایی ۶۲MB |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / «بسته با برنامهٔ نصب‌شده تداخل دارد» | امضای دو نسخه متفاوت است (مثلاً `v1.0.3` یا نسخهٔ آزمایشی در برابر ریلیز رسمی). برای نصب روی نسخهٔ قبلی همان کلید لازم است. اگر در دسترس نیست، اول از داده‌ها بکاپ بگیرید و بعد نسخهٔ قدیمی را حذف کنید. **حذف برنامه ممکن است داده‌های محلی را پاک کند.** |
+| `INSTALL_FAILED_NO_MATCHING_ABIS` / «با گوشی سازگار نیست» | ریلیز گوشی فقط برای `arm64-v8a` است؛ `x86_64` فقط برای آزمون شبیه‌ساز است. حداقل اندروید ۷ (API 24) لازم است. `adb shell getprop ro.product.cpu.abilist` معماری‌های دستگاه را نشان می‌دهد. |
+| دستگاه ۱۶ کیلوبایتی | `libnode.so` فعلی با هم‌ترازی ۴ کیلوبایت ساخته شده است. سازگاری بومی ۱۶ کیلوبایت تأیید نشده و نصب یا اجرا ممکن است به حالت سازگاری سیستم‌عامل نیاز داشته باشد. `adb shell getconf PAGE_SIZE` اندازهٔ صفحهٔ حافظه را نشان می‌دهد. |
+| نصب شد، ولی باز نمی‌شود | فضای خالی را بررسی کنید. اگر خطا ادامه داشت، کد `PEAK-…` روی صفحه، مدل گوشی و نسخهٔ اندروید را همراه `adb logcat -d -s PeakActivity PeakAssets PeakNodeService PeakNode AndroidRuntime` گزارش کنید. |
 
-## پرسش‌های متداول
-
-**چرا WebView و نه React Native؟**
-برای اینکه «عین نسخهٔ PC» باشد: همان کد Next، همان بات، همان دیتابیس — فقط پوستهٔ
-UI به‌جای BrowserWindow الکترون، WebView اندروید است.
-
-**چرا فقط arm64-v8a؟**
-تمام گوشی‌های مدرن arm64 هستند. برای شبیه‌ساز x86_64: `gradle assembleRelease -PpeakAbis=x86_64`
-(و `PEAK_ABIS=x86_64` برای اسکریپت آماده‌سازی).
+در صورت نیاز، برای فعال ماندن بات می‌توانید بهینه‌سازی باتری Peak را غیرفعال کنید. Node.js موبایل 18.20.4 پایان پشتیبانی را پشت سر گذاشته است؛ ارتقای آن و سازگاری بومی ۱۶ کیلوبایت جداگانه لازم است.
 
 **بات هنگام بستن اپ؟**
 سرویس پیش‌زمینه ادامه می‌دهد؛ با ضربه روی نوتیفیکیشن برمی‌گردید. برای اجرای همیشگی،
@@ -1143,52 +1115,14 @@ PEAK_RUN_LIVE_TESTS=0
 
 ---
 <!-- appendix: release steps -->
-# 🚀 مراحل انتشار رسمی v1.0.3 — گام‌به‌گام (به فارسی)
+# انتشار رسمی Peak در GitHub
 
-> وضعیت: همه‌چیز آماده است؛ فقط انتشار GitHub مانده (در سندباکس بسته بود).
-> بعد از انتقال به مخزن جدید و دادن دسترسی، مراحل زیر را انجام می‌دهیم.
+1. برای امضای APK، از کلید انتشار قبلی استفاده کنید. اگر اولین انتشار رسمی با کلید اختصاصی است، با `keytool -genkeypair -keystore peak-release.jks -alias peak -keyalg RSA -keysize 3072 -validity 10000` یک کلید بسازید و فایل را در محلی امن پشتیبان بگیرید. در **Settings → Secrets and variables → Actions** این چهار **Repository secret** را تنظیم کنید:
+   - `PEAK_ANDROID_KEYSTORE_BASE64`: محتوای فایل JKS یا PKCS#12 به Base64 (مثلاً `base64 -w0 peak-release.jks` در لینوکس).
+   - `PEAK_ANDROID_STORE_PASSWORD`: رمز keystore.
+   - `PEAK_ANDROID_KEY_ALIAS`: نام alias کلید.
+   - `PEAK_ANDROID_KEY_PASSWORD`: رمز خود کلید.
+2. نسخهٔ تأییدشده را از طریق PR وارد `main` کنید. نام تگ باید با `package.json` برابر باشد (مثلاً `v1.0.4`). تگ را روی کامیت تأییدشده ایجاد و push کنید. قبل از پایان CI، دستی Release منتشر نکنید.
+3. بعد از موفقیت تست‌ها و ساخت هر دو پلتفرم، CI ابتدا یک Release پیش‌نویس می‌سازد، فایل‌های APK امضاشده، SHA-256، EXEها، آرشیو سورس و راهنما را پیوست می‌کند و سپس آن را به‌عنوان آخرین نسخه منتشر می‌کند. اجرای PR، push عادی به `main` و اجرای دستی فقط آرتیفکت آزمایشی می‌سازند و ریلیز قبلی را تغییر نمی‌دهند.
 
-## ۱) انتقال مخزن (در مخزن جدید)
-
-```bash
-git clone Peak-git.bundle peak-new
-cd peak-new
-git remote add origin https://github.com/<user>/<repo>.git
-git push origin arena/03c208a6-peak:main
-git push origin arena/03c208a6-peak:refs/heads/arena/03c208a6-peak
-```
-
-## ۲) ساخت خودکار نسخه‌ها (GitHub Actions)
-
-با push به main این‌ها خودکار ساخته می‌شوند:
-
-- **ویندوز**: `Peak-Setup-1.0.3.exe` + `Peak-Portable-1.0.3.exe` + `INSTALL-GUIDE.md` + `release-notes.md` (ورک‌فلوی build-windows)
-- **اندروید**: `Peak-1.0.3.apk` — اجرای کامل روی خود گوشی (ورک‌فلوی build-android)
-
-نکتهٔ اندروید: اولین اجرا ۱۵–۳۰ دقیقه طول می‌کشد (استخراج libnode از npm + کراس‌کامپایل better-sqlite3 با NDK). خروجی را از بخش **Artifacts** همان اجرا دانلود کنید.
-
-## ۳) انتشار رسمی (وقتی دسترسی دادید)
-
-```bash
-git tag v1.0.3
-git push origin v1.0.3
-```
-
-ورک‌فلوها به‌صورت خودکار:
-- تگ `v1.0.3` را با نام نمایشی **«Peak 1.0.3 — نسخهٔ رسمی»** می‌سازند
-- نصب‌کننده‌ها + نسخهٔ قابل حمل + راهنماها + **APK اندروید** را به Release پیوست می‌کنند
-- یادداشت‌های انتشار (از CHANGELOG) را در توضیح Release می‌گذارند
-
-## ۴) چک‌لیست نهایی
-
-- [ ] push به main (تاریخچهٔ کامل از bundle)
-- [ ] تگ `v1.0.3` + Release رسمی
-- [ ] دانلود و نصب واقعی Setup روی ویندوز (بررسی میان‌بر + صفحهٔ دانلود)
-- [ ] دانلود APK از Release و نصب روی گوشی (NOT TESTED تا این لحظه — اولین تست واقعی)
-- [ ] اتصال واقعی بات به سرور ماینکرفت
-
-## ⚠️ محدودیت‌های گزارش‌شده (صادقانه)
-
-- **APK اندروید**: ساخت در CI طراحی شده ولی نصب/اجرا روی گوشی **NOT TESTED** است (در محیط ساخت، دستگاه/شبیه‌ساز اندروید نبود). کراس‌کامپایل `better-sqlite3` هم فقط در CI اجرا می‌شود.
-- **امضا**: فایل‌های ویندوز و APK فعلاً با کلید debug/بدون امضای سازمانی‌اند (keystore باید در Secrets تنظیم شود — هرگز در Git).
-- **Node 18.20.4** در اندروید آخرین nodejs-mobile رسمی است ولی EOL (آوریل ۲۰۲۵) — مسیر ارتقا در docs/ANDROID.md.
+بدون هر چهار secret، انتشار رسمی متوقف می‌شود و APK با کلید debug منتشر نمی‌شود. همان کلید را برای به‌روزرسانی‌های بعدی نگه دارید. کلید، رمز و مقدار Base64 را در Git، لاگ، چت یا آرتیفکت آپلود نکنید.

@@ -14,6 +14,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -25,7 +26,9 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import java.io.File
 import java.net.HttpURLConnection
+import java.net.Proxy
 import java.net.URL
 
 class MainActivity : Activity() {
@@ -66,7 +69,6 @@ class MainActivity : Activity() {
         root.addView(retry)
         setContentView(root)
 
-        requestNotifPermission()
         boot()
     }
 
@@ -75,36 +77,73 @@ class MainActivity : Activity() {
         status.text = "در حال راه‌اندازی Peak…"
         progress.visibility = View.VISIBLE
         bootThread = Thread {
-            AssetsInstaller.ensureInstalled(this) { msg ->
-                runOnUiThread { status.text = msg }
-            }
-            // سرویس نگه‌دارندهٔ رانتایم Node (بات + سرور)
-            startService(Intent(this, NodeService::class.java))
-            // waitForServer — همان منطق electron/main.js (۹۰ بار × ۱ ثانیه)
-            var ready = false
-            for (i in 1..90) {
-                if (probeServer()) { ready = true; break }
-                runOnUiThread {
-                    status.text = "در حال بالا آوردن سرور محلی… ($i)"
+            val startup = File(cacheDir, NodeService.STARTUP_STATUS)
+            try {
+                if (readStartup(startup).startsWith("error:")) startup.delete()
+                AssetsInstaller.ensureInstalled(this) { msg ->
+                    runOnUiThread { status.text = msg }
                 }
+                val service = Intent(this, NodeService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(service)
+                } else {
+                    startService(service)
+                }
+            } catch (e: Exception) {
+                Log.e("PeakActivity", "Could not prepare or start the runtime", e)
+                runOnUiThread { showFailure("آماده‌سازی فایل‌ها یا شروع سرویس ناموفق بود. فضای خالی و نسخهٔ APK را بررسی کنید.") }
+                return@Thread
+            }
+            for (i in 1..60) {
+                if (probeServer()) {
+                    runOnUiThread { showUi() }
+                    return@Thread
+                }
+                val state = readStartup(startup)
+                if (state.startsWith("error:")) {
+                    runOnUiThread { showStartupError(state.removePrefix("error:"), timedOut = false) }
+                    return@Thread
+                }
+                runOnUiThread { status.text = "در حال بالا آوردن سرور محلی… ($i)" }
                 Thread.sleep(1000)
             }
-            runOnUiThread {
-                if (ready) showUi() else showFailure()
-            }
+            val stage = readStartup(startup).removePrefix("error:")
+            runOnUiThread { showStartupError(stage, timedOut = true) }
         }.also { it.start() }
     }
 
-    private fun probeServer(): Boolean = try {
-        val conn = URL(serverUrl).openConnection() as HttpURLConnection
-        conn.connectTimeout = 1000
-        conn.readTimeout = 1000
-        conn.requestMethod = "HEAD"
-        val ok = conn.responseCode in 200..399
-        conn.disconnect()
-        ok
-    } catch (_: Exception) {
-        false
+    private fun readStartup(file: File): String = runCatching { file.readText().trim() }.getOrDefault("")
+
+    private fun probeServer(): Boolean {
+        val connection = URL("$serverUrl/__peak_ready").openConnection(Proxy.NO_PROXY) as HttpURLConnection
+        return try {
+            connection.connectTimeout = 1000
+            connection.readTimeout = 1000
+            connection.instanceFollowRedirects = false
+            connection.responseCode == 200 && connection.inputStream.bufferedReader().use {
+                it.readLine() == "peak-android-ready"
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun showStartupError(stage: String, timedOut: Boolean) {
+        val component = when (stage) {
+            "node" -> "موتور Node"
+            "sqlite" -> "دیتابیس SQLite"
+            "next" -> "سرور Next.js"
+            "listen", "ready" -> "اتصال به سرور محلی"
+            else -> "سرویس اندروید"
+        }
+        val code = when (stage) {
+            "node", "sqlite", "next", "listen", "ready" -> stage.uppercase()
+            else -> "SERVICE"
+        }
+        val reason = if (timedOut) "در زمان مقرر آماده نشد" else "شروع نشد"
+        showFailure("$component $reason.\nکد گزارش: PEAK-$code")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -132,11 +171,12 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
         ))
         w.loadUrl(serverUrl)
+        requestNotifPermission()
     }
 
-    private fun showFailure() {
+    private fun showFailure(message: String = "راه‌اندازی سرور محلی ناموفق بود.\nلطفاً برنامه را دوباره باز کنید.") {
         progress.visibility = View.GONE
-        status.text = "راه‌اندازی سرور محلی ناموفق بود.\nلطفاً برنامه را دوباره باز کنید."
+        status.text = message
         retry.visibility = View.VISIBLE
     }
 
