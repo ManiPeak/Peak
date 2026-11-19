@@ -13,7 +13,17 @@ set -euo pipefail
 # Verify a real APK install, main activity launch and the embedded Next/SQLite runtime.
 if [[ "${1:-}" == --smoke-test ]]; then
   ADB_PORT=13784
-  trap 'rc=$?; if (( rc != 0 )); then adb logcat -d -t 500; fi; adb forward --remove tcp:$ADB_PORT || true' EXIT
+  log_failure() {
+    if (( $? != 0 )); then
+      adb logcat -d -s PeakActivity PeakAssets PeakNodeService PeakNode AndroidRuntime libc | tail -60 |
+        while IFS= read -r line; do
+          # Escape the annotation protocol so log lines remain plain text.
+          printf '::warning::Android startup: %s\n' "${line//%/%25}"
+        done || true
+    fi
+    adb forward --remove "tcp:$ADB_PORT" || true
+  }
+  trap log_failure EXIT
   adb install "$2"
   adb shell am start -W -n com.peak.app/.MainActivity
   adb forward "tcp:$ADB_PORT" tcp:3784
