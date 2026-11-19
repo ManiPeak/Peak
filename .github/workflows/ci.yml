@@ -106,6 +106,7 @@ jobs:
           ENTRIES=$(unzip -Z1 "$APK")
           for ENTRY in assets/app/.next/BUILD_ID assets/app/node_modules/next/dist/bin/next \
             assets/app/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+            assets/app/node_modules/minecraft-data/minecraft-data/data/bedrock/common/features.json \
             "lib/$PEAK_ABIS/libnode.so" "lib/$PEAK_ABIS/libpeaknode.so" "lib/$PEAK_ABIS/libc++_shared.so"; do
             grep -Fxq "$ENTRY" <<< "$ENTRIES" || { echo "::error::APK missing $ENTRY"; exit 1; }
           done
@@ -148,6 +149,12 @@ jobs:
       - name: Build EXE
         shell: pwsh
         run: ./scripts/build-exe.ps1
+      - name: Verify packaged dependencies
+        shell: pwsh
+        working-directory: dist/win-unpacked/resources/app
+        run: |
+          node -e "require('./node_modules/mineflayer')"
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Minecraft dependencies cannot be imported' }
       - name: Collect release files
         shell: pwsh
         run: |

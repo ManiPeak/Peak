@@ -438,12 +438,19 @@ function ensureAssets() {
       /* پکیج حذف‌شده در npm ls — نادیده */
     }
   }
-  // مثل build-exe.ps1: bedrock/doc/tools از minecraft-data حذف می‌شوند
-  for (const sub of ["data/bedrock", "doc", "tools"]) {
-    const p = path.join(outNm, "minecraft-data", "minecraft-data", sub);
-    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  // Mineflayer only plays Java Edition, but minecraft-data eagerly imports
+  // bedrock/common/features.json even for Java. Strip only unused version data.
+  const mcData = path.join(outNm, "minecraft-data", "minecraft-data");
+  const bedrock = path.join(mcData, "data", "bedrock");
+  for (const name of fs.readdirSync(bedrock)) {
+    if (/^\d/.test(name) || name === "latest") fs.rmSync(path.join(bedrock, name), { recursive: true, force: true });
   }
-  log("minecraft-data: bedrock/doc/tools حذف شد (الگوی build-exe.ps1)");
+  for (const name of ["doc", "tools"]) fs.rmSync(path.join(mcData, name), { recursive: true, force: true });
+  execFileSync(process.execPath, ["-e", "require('./node_modules/mineflayer')"], {
+    cwd: assetsDir,
+    stdio: "inherit",
+  });
+  log("minecraft-data: metadata kept; Java client import verified");
   // better-sqlite3 باید برای اندروید کراس‌کامپایل شود (scripts/build-android-native.sh)
   const bsqlBuild = path.join(outNm, "better-sqlite3", "build", "Release", "better_sqlite3.node");
   if (!fs.existsSync(bsqlBuild)) {

@@ -38,8 +38,9 @@ const config = {
     "next.config.mjs",
     "tsconfig.json",
     "package.json",
-    // حذف داده‌های Bedrock (۳۳۰+ مگ) — mineflayer فقط Java Edition است
-    "!node_modules/minecraft-data/minecraft-data/data/bedrock/**",
+    // Keep bedrock/common: minecraft-data imports it even for Java.
+    "!node_modules/minecraft-data/minecraft-data/data/bedrock/[0-9]*/**",
+    "!node_modules/minecraft-data/minecraft-data/data/bedrock/latest/**",
     "!node_modules/minecraft-data/minecraft-data/doc/**",
     "!node_modules/minecraft-data/minecraft-data/tools/**",
     // حذف باینری‌های SWC پلتفرم‌های غیر ویندوز (در صورت وجود)
