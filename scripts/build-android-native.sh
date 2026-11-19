@@ -15,7 +15,7 @@ if [[ "${1:-}" == --smoke-test ]]; then
   ADB_PORT=13784
   log_failure() {
     if (( $? != 0 )); then
-      adb logcat -d -s PeakActivity PeakAssets PeakNodeService PeakNode AndroidRuntime libc | tail -60 |
+      adb logcat -d -s PeakActivity PeakAssets PeakNodeService PeakNode AndroidRuntime libc ActivityTaskManager | tail -60 |
         while IFS= read -r line; do
           # Escape the annotation protocol so log lines remain plain text.
           printf '::warning::Android startup: %s\n' "${line//%/%25}"
@@ -25,6 +25,8 @@ if [[ "${1:-}" == --smoke-test ]]; then
   }
   trap log_failure EXIT
   adb install "$2"
+  adb shell input keyevent KEYCODE_WAKEUP
+  adb shell wm dismiss-keyguard
   adb shell am start -W -n com.peak.app/.MainActivity
   adb forward "tcp:$ADB_PORT" tcp:3784
   for ((i=0; i<90; i++)); do

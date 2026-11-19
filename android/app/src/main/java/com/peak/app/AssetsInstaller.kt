@@ -7,9 +7,9 @@ package com.peak.app
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.content.res.AssetManager
 import android.util.Log
 import java.io.File
+import java.util.zip.ZipInputStream
 
 object AssetsInstaller {
     private const val TAG = "PeakAssets"
@@ -33,11 +33,8 @@ object AssetsInstaller {
         appDir.mkdirs()
         File(appDir, "tmp").mkdirs()
 
-        var count = 0
-        copyTree(context.assets, "app", appDir) { n ->
-            count = n
-            if (n % 500 == 0) onProgress("در حال استخراج فایل‌ها ($n)…")
-        }
+        Log.i(TAG, "extracting runtime for $version")
+        val count = extractRuntime(context, appDir, onProgress)
         check(hasRuntime(appDir)) { "APK is missing required Next.js or SQLite files" }
         marker.writeText(version)
         Log.i(TAG, "installed $count files for $version")
@@ -50,26 +47,31 @@ object AssetsInstaller {
         "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
     ).all { File(appDir, it).isFile }
 
-    private fun copyTree(am: AssetManager, assetPath: String, outDir: File, onFile: (Int) -> Unit) {
-        var n = 0
-        fun walk(aPath: String, oDir: File) {
-            oDir.mkdirs()
-            val children = am.list(aPath) ?: emptyArray()
-            for (child in children) {
-                val childAsset = "$aPath/$child"
-                val sub = am.list(childAsset)
-                if (sub != null && sub.isNotEmpty()) {
-                    walk(childAsset, File(oDir, child))
-                } else {
-                    am.open(childAsset).use { input ->
-                        File(oDir, child).outputStream().use { output -> input.copyTo(output) }
-                    }
-                    n++
-                    onFile(n)
+    private fun extractRuntime(context: Context, appDir: File, onProgress: (String) -> Unit): Int {
+        val base = appDir.canonicalFile
+        val prefix = base.path + File.separator
+        val protectedData = File(base, "data").path
+        var count = 0
+        ZipInputStream(context.assets.open("peak-runtime.zip").buffered()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val output = File(base, entry.name).canonicalFile
+                check(output.path.startsWith(prefix) && output.path != protectedData &&
+                    !output.path.startsWith(protectedData + File.separator)) {
+                    "Invalid runtime archive entry: ${entry.name}"
                 }
+                if (entry.isDirectory) {
+                    output.mkdirs()
+                } else {
+                    output.parentFile?.mkdirs()
+                    output.outputStream().buffered().use { dest -> zip.copyTo(dest) }
+                    count++
+                    if (count % 500 == 0) onProgress("در حال استخراج فایل‌ها ($count)…")
+                }
+                zip.closeEntry()
             }
         }
-        walk(assetPath, outDir)
+        return count
     }
 
     private fun currentVersion(context: Context): String = try {

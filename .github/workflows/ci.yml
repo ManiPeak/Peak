@@ -104,11 +104,17 @@ jobs:
           grep -F "package: name='com.peak.app'" <<< "$BADGING" | grep -F "versionName='$VERSION'"
           grep -Ex "native-code: '$PEAK_ABIS' *" <<< "$BADGING"
           ENTRIES=$(unzip -Z1 "$APK")
-          for ENTRY in assets/app/.next/BUILD_ID assets/app/node_modules/next/dist/bin/next \
-            assets/app/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
-            assets/app/node_modules/minecraft-data/minecraft-data/data/bedrock/common/features.json \
-            "lib/$PEAK_ABIS/libnode.so" "lib/$PEAK_ABIS/libpeaknode.so" "lib/$PEAK_ABIS/libc++_shared.so"; do
+          for ENTRY in "lib/$PEAK_ABIS/libnode.so" "lib/$PEAK_ABIS/libpeaknode.so" "lib/$PEAK_ABIS/libc++_shared.so"; do
             grep -Fxq "$ENTRY" <<< "$ENTRIES" || { echo "::error::APK missing $ENTRY"; exit 1; }
+          done
+          RUNTIME=$(mktemp --suffix=.zip)
+          trap 'rm -f "$RUNTIME"' EXIT
+          unzip -p "$APK" assets/peak-runtime.zip > "$RUNTIME"
+          ENTRIES=$(unzip -Z1 "$RUNTIME")
+          for ENTRY in .next/BUILD_ID node_modules/next/dist/bin/next \
+            node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+            node_modules/minecraft-data/minecraft-data/data/bedrock/common/features.json; do
+            grep -Fxq "$ENTRY" <<< "$ENTRIES" || { echo "::error::Runtime archive missing $ENTRY"; exit 1; }
           done
           if [[ "$OFFICIAL_APK" == true ]]; then
             NAME="Peak-$VERSION.apk"

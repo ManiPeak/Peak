@@ -157,7 +157,7 @@ Next.js و بات ماینکرفت و دیتابیس همگی **روی خود گ
   (Node 18.20.4 — MODULE_VERSION 108) به‌همراه هدرهای کامل — توسط
   `node scripts/tools.mjs prepare-android-assets` استخراج می‌شود. هیچ فایل باینری در Git نیست.
 - **نصب اپ روی گوشی**: assets (`.next` + `node_modules` پروداکشن + `package.json` +
-  `next.config.mjs` + `public`) در اولین اجرا به `filesDir/app` استخراج می‌شوند —
+  `next.config.mjs` + `public`) در یک آرشیو داخلی APK قرار می‌گیرند و در اولین اجرا به `filesDir/app` استخراج می‌شوند —
   دقیقاً همان ساختار `resources/app` در ویندوز.
 - **داده‌ها**: دیتابیس SQLite مثل PC در پوشهٔ `data/` زیر `filesDir/app` می‌ماند و استخراج نسخهٔ جدید آن را حذف نمی‌کند.
 - **جلوگیری از خواب**: سرویس پیش‌زمینه + WakeLock تا بات هنگام قفل بودن صفحه زنده بماند.

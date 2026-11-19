@@ -54,9 +54,12 @@ android {
         }
     }
 
+    sourceSets {
+        // Ship one archive, not tens of thousands of separately listed APK assets.
+        main.assets.setSrcDirs([layout.buildDirectory.dir("generated/peak-runtime-assets")])
+    }
     androidResources {
-        // AAPT's default skips dotfiles/directories, including the entire Next.js build.
-        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*~"
+        noCompress += "zip"
     }
 
     signingConfigs {
@@ -93,3 +96,15 @@ android {
         }
     }
 }
+
+// AAPT never filters .next or other runtime paths inside this archive.
+def packPeakRuntime = tasks.register("packPeakRuntime", Zip) {
+    from layout.projectDirectory.dir("src/main/assets/app")
+    exclude "data/**", "tmp/**", ".installed-version"
+    archiveFileName = "peak-runtime.zip"
+    destinationDirectory = layout.buildDirectory.dir("generated/peak-runtime-assets")
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+    includeEmptyDirs = false
+}
+tasks.named("preBuild").configure { dependsOn(packPeakRuntime) }
