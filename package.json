@@ -1,6 +1,6 @@
 {
   "name": "peak",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Peak — دستیار هوش مصنوعی شخصی Local-First با حافظهٔ دائمی، صوت فارسی و پل ماینکرفت",
   "main": "electron/main.js",

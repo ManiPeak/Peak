@@ -9,9 +9,9 @@ import path from "node:path";
 const root = process.cwd();
 
 describe("Peak 1.0.3 consolidation", () => {
-  test("package.json version is 1.0.3", () => {
+  test("package.json version is 1.0.4", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf-8"));
-    assert.equal(pkg.version, "1.0.3");
+    assert.equal(pkg.version, "1.0.4");
   });
 
   test("tracked file budget <= 100 (excluding generated dirs)", () => {
@@ -36,9 +36,9 @@ describe("Peak 1.0.3 consolidation", () => {
     assert.match(cfg, /executableName:\s*"Peak"/);
   });
 
-  test("android versionCode is 4 and versionName comes from package.json", () => {
+  test("android versionCode is 5 and versionName comes from package.json", () => {
     const g = fs.readFileSync(path.join(root, "android/app/build.gradle"), "utf-8");
-    assert.match(g, /versionCode 4/);
+    assert.match(g, /versionCode 5/);
     assert.match(g, /versionName rootPkg\.version/);
   });
 

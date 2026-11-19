@@ -14,6 +14,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -75,11 +76,21 @@ class MainActivity : Activity() {
         status.text = "در حال راه‌اندازی Peak…"
         progress.visibility = View.VISIBLE
         bootThread = Thread {
-            AssetsInstaller.ensureInstalled(this) { msg ->
-                runOnUiThread { status.text = msg }
+            try {
+                AssetsInstaller.ensureInstalled(this) { msg ->
+                    runOnUiThread { status.text = msg }
+                }
+                val service = Intent(this, NodeService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(service)
+                } else {
+                    startService(service)
+                }
+            } catch (e: Exception) {
+                Log.e("PeakActivity", "Could not prepare or start the runtime", e)
+                runOnUiThread { showFailure("آماده‌سازی فایل‌ها یا شروع سرویس ناموفق بود. فضای خالی و نسخهٔ APK را بررسی کنید.") }
+                return@Thread
             }
-            // سرویس نگه‌دارندهٔ رانتایم Node (بات + سرور)
-            startService(Intent(this, NodeService::class.java))
             // waitForServer — همان منطق electron/main.js (۹۰ بار × ۱ ثانیه)
             var ready = false
             for (i in 1..90) {
@@ -134,9 +145,9 @@ class MainActivity : Activity() {
         w.loadUrl(serverUrl)
     }
 
-    private fun showFailure() {
+    private fun showFailure(message: String = "راه‌اندازی سرور محلی ناموفق بود.\nلطفاً برنامه را دوباره باز کنید.") {
         progress.visibility = View.GONE
-        status.text = "راه‌اندازی سرور محلی ناموفق بود.\nلطفاً برنامه را دوباره باز کنید."
+        status.text = message
         retry.visibility = View.VISIBLE
     }
 

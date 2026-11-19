@@ -44,3 +44,8 @@ android/local.properties
 
 # local drive download (not in repo)
 google_drive/
+
+# Release signing and local Android tooling
+*.jks
+*.keystore
+android/app/.cxx/

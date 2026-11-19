@@ -16,18 +16,20 @@ object AssetsInstaller {
     private const val MARKER = ".installed-version"
 
     /** @return تعداد فایل‌های کپی‌شده؛ اگر از قبل نصب بود ۰ */
+    @Synchronized
     fun ensureInstalled(context: Context, onProgress: (String) -> Unit = {}): Int {
         val appDir = File(context.filesDir, "app")
         val marker = File(appDir, MARKER)
         val version = currentVersion(context)
-        if (marker.exists() && marker.readText() == version &&
-            File(appDir, "node_modules/next/dist/bin/next").exists()
-        ) {
+        if (marker.exists() && marker.readText() == version && hasRuntime(appDir)) {
             Log.i(TAG, "assets already installed ($version)")
             return 0
         }
         onProgress("در حال آماده‌سازی فایل‌های برنامه…")
-        if (appDir.exists()) appDir.deleteRecursively()
+        // SQLite, settings and mods live in app/data. Do not delete them on update.
+        appDir.listFiles()?.filter { it.name != "data" }?.forEach {
+            check(it.deleteRecursively()) { "Could not clear old runtime: ${it.name}" }
+        }
         appDir.mkdirs()
         File(appDir, "tmp").mkdirs()
 
@@ -36,10 +38,17 @@ object AssetsInstaller {
             count = n
             if (n % 500 == 0) onProgress("در حال استخراج فایل‌ها ($n)…")
         }
+        check(hasRuntime(appDir)) { "APK is missing required Next.js or SQLite files" }
         marker.writeText(version)
         Log.i(TAG, "installed $count files for $version")
         return count
     }
+
+    private fun hasRuntime(appDir: File) = listOf(
+        ".next/BUILD_ID",
+        "node_modules/next/dist/bin/next",
+        "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+    ).all { File(appDir, it).isFile }
 
     private fun copyTree(am: AssetManager, assetPath: String, outDir: File, onFile: (Int) -> Unit) {
         var n = 0
